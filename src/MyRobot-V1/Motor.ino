@@ -23,13 +23,55 @@
 void drive(int in1, int in2, int enA) {
     digitalWrite(in1, LOW);   // Direction control: IN1
     digitalWrite(in2, HIGH);  // Direction control: IN2 (sets rotation direction)
-    digitalWrite(enA, HIGH);  // Enable motor driver
+    digitalWrite(enA, HIGH);  // Enable motor A driver
+
+    digitalWrite(in4, LOW);   // Direction control: IN1
+    digitalWrite(in3, HIGH);  // Direction control: IN2 (sets rotation direction)
+    digitalWrite(enB, HIGH);  // Enable motor B driver
 }
 
 void stop(int in1, int in2, int enA) {
     digitalWrite(in1, LOW);   // Direction control: IN1
     digitalWrite(in2, HIGH);  // Direction control: IN2 (sets rotation direction)
-    digitalWrite(enA, LOW);   // Disable motor driver
+    digitalWrite(enA, LOW);   // Disable motor A driver
+
+    digitalWrite(in3, LOW);   // Direction control: IN1
+    digitalWrite(in4, HIGH);  // Direction control: IN2 (sets rotation direction)
+    digitalWrite(enB, LOW);   // Disable motor B driver
 }
 
 // TODO: add your own driving functions here
+
+void backwards() {
+    digitalWrite(in1, HIGH);   // Direction control: IN1
+    digitalWrite(in2, LOW);    // Direction control: IN2 (sets rotation direction)
+    digitalWrite(enA, HIGH);  // Enable motor A driver
+
+    digitalWrite(in4, HIGH);   // Direction control: IN1
+    digitalWrite(in3, LOW);    // Direction control: IN2 (sets rotation direction)
+    digitalWrite(enB, HIGH);   // Enable motor B driver
+}
+
+void turnLeft() {
+    digitalWrite(in1, LOW);   // Direction control: IN1
+    digitalWrite(in2, HIGH);  // Direction control: IN2 (sets rotation direction)
+    digitalWrite(enA, HIGH);  // Enable motor A driver
+
+    digitalWrite(in4, LOW);   // Direction control: IN1
+    digitalWrite(in3, HIGH);  // Direction control: IN2 (sets rotation direction)
+    digitalWrite(enB, LOW);   // Disable motor B driver
+}
+
+void turnRight() {
+    digitalWrite(in1, LOW);   // Direction control: IN1
+    digitalWrite(in2, HIGH);  // Direction control: IN2 (sets rotation direction)
+    digitalWrite(enA, LOW);   // Disable motor A driver
+
+    digitalWrite(in4, LOW);   // Direction control: IN1
+    digitalWrite(in3, HIGH);  // Direction control: IN2 (sets rotation direction)
+    digitalWrite(enB, HIGH);  // Enable motor B driver
+}
+
+void speedUp() {}
+
+void slowDown() {}

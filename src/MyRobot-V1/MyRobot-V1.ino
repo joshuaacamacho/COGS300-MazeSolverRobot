@@ -4,7 +4,11 @@ int enA = 9;   // Enable pin for Motor A — must be a PWM-capable pin
 int in1 = 8;   // Direction control pin 1 for Motor A
 int in2 = 7;   // Direction control pin 2 for Motor A
 
-void setup() {
+int enB = 5    // Enable pin for Motor A — must be a PWM-capable pin
+int in3 = 2;   // Direction control pin 2 for Motor B
+int in4 = 4;   // Direction control pin 2 for Motor B 
+
+void setup() {c:\Users\joshu\school\2025W2-cogs300\COGS300-MazeSolverRobot\src\MyRobot-V1\Motor.ino
     // put your setup code here, to run once:
     Serial.begin(9600);
 }
@@ -22,5 +26,8 @@ void loop() {
     stop(in1, in2, enA);
     delay(1000);
 
-    // TODO: add your own driving functions here
+    // Stop for 1 second
+    logInfo(Serial, "Driving Backwards");
+    backwards(in1, in2, enA);
+    delay(1000);
 }
