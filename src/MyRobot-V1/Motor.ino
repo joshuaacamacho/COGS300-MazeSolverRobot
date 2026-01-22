@@ -34,6 +34,11 @@ void drive() {
 }
 
 void stop() {
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, LOW);
+    digitalWrite(in3, LOW);
+    digitalWrite(in4, LOW);
+
     analogWrite(enA, 0);
     analogWrite(enB, 0);
 }
@@ -52,6 +57,8 @@ void backwards() {
 
 void turnLeft() {
     // Left motor stopped
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, LOW);
     analogWrite(enA, 0);
 
     // Right motor forward
@@ -62,11 +69,13 @@ void turnLeft() {
 
 void turnRight() {
     // Right motor stopped
+    digitalWrite(in3, LOW);
+    digitalWrite(in4, LOW);
     analogWrite(enB, 0);
 
     // Left motor forward
-    digitalWrite(in1, LOW);
-    digitalWrite(in2, HIGH);
+    digitalWrite(in1, HIGH);
+    digitalWrite(in2, LOW);
     analogWrite(enA, currentSpeed);
 }
 
