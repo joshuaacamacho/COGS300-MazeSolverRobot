@@ -1,10 +1,10 @@
 // MyRobot-V1.ino
 // This file must be named the same as your sketch folder
-int enA = 9;   // Enable pin for Motor A — must be a PWM-capable pin
+int enA = 9;   // Enable pin for Motor A — must be a PWM-capable pin (left wheel)
 int in1 = 8;   // Direction control pin 1 for Motor A
 int in2 = 7;   // Direction control pin 2 for Motor A
 
-int enB = 5;    // Enable pin for Motor B — must be a PWM-capable pin
+int enB = 5;    // Enable pin for Motor B — must be a PWM-capable pin (right wheel)
 int in3 = 2;   // Direction control pin 1 for Motor B
 int in4 = 4;   // Direction control pin 2 for Motor B 
 
@@ -16,7 +16,7 @@ void setup() {
     // put your setup code here, to run once:
     Serial.begin(9600);
 
-    pinMode(enA, OUTPUT);
+    pinMode(enA, OUTPUT);w
     pinMode(in1, OUTPUT);
     pinMode(in2, OUTPUT);
 
@@ -31,10 +31,10 @@ void loop() {
         
         switch(command) {
             case 'w':  // Forward
-                driveForward();
+                drive();
                 break;
             case 's':  // Backward
-                driveBackward();
+                backwards();
                 break;
             case 'a':  // Turn left
                 turnLeft();
@@ -49,7 +49,7 @@ void loop() {
                 slowDown();
                 break;
             case ' ':  // Stop
-                stopMotors();
+                stop();
                 break;
         }
     }
