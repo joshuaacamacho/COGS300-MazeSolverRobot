@@ -20,17 +20,17 @@
  * @param in2 GPIO pin connected to motor driver input 2 (direction control)
  * @param enA GPIO pin connected to motor driver enable pin (motor on/off)
  */
-void drive(int in1, int in2, int enA) {
+void drive() {
     digitalWrite(in1, LOW);   // Direction control: IN1
     digitalWrite(in2, HIGH);  // Direction control: IN2 (sets rotation direction)
     digitalWrite(enA, HIGH);  // Enable motor A driver
 
-    digitalWrite(in4, LOW);   // Direction control: IN1
-    digitalWrite(in3, HIGH);  // Direction control: IN2 (sets rotation direction)
+    digitalWrite(in3, LOW);   // Direction control: IN1
+    digitalWrite(in4, HIGH);  // Direction control: IN2 (sets rotation direction)
     digitalWrite(enB, HIGH);  // Enable motor B driver
 }
 
-void stop(int in1, int in2, int enA) {
+void stop() {
     digitalWrite(in1, LOW);   // Direction control: IN1
     digitalWrite(in2, HIGH);  // Direction control: IN2 (sets rotation direction)
     digitalWrite(enA, LOW);   // Disable motor A driver
@@ -47,31 +47,61 @@ void backwards() {
     digitalWrite(in2, LOW);    // Direction control: IN2 (sets rotation direction)
     digitalWrite(enA, HIGH);  // Enable motor A driver
 
-    digitalWrite(in4, HIGH);   // Direction control: IN1
-    digitalWrite(in3, LOW);    // Direction control: IN2 (sets rotation direction)
+    digitalWrite(in3, HIGH);   // Direction control: IN1
+    digitalWrite(in4, LOW);    // Direction control: IN2 (sets rotation direction)
     digitalWrite(enB, HIGH);   // Enable motor B driver
 }
 
 void turnLeft() {
     digitalWrite(in1, LOW);   // Direction control: IN1
-    digitalWrite(in2, HIGH);  // Direction control: IN2 (sets rotation direction)
-    digitalWrite(enA, HIGH);  // Enable motor A driver
+    digitalWrite(in2, LOW);  // Direction control: IN2 (sets rotation direction)
+    digitalWrite(enA, LOW);  // Enable motor A driver
 
-    digitalWrite(in4, LOW);   // Direction control: IN1
-    digitalWrite(in3, HIGH);  // Direction control: IN2 (sets rotation direction)
-    digitalWrite(enB, LOW);   // Disable motor B driver
+    digitalWrite(in3, LOW);  // Direction control: IN2 (sets rotation direction)
+    digitalWrite(in4, HIGH);   // Direction control: IN1
+    digitalWrite(enB, HIGH);   // Disable motor B driver
 }
 
 void turnRight() {
     digitalWrite(in1, LOW);   // Direction control: IN1
     digitalWrite(in2, HIGH);  // Direction control: IN2 (sets rotation direction)
-    digitalWrite(enA, LOW);   // Disable motor A driver
+    digitalWrite(enA, HIGH);   // Disable motor A driver
 
-    digitalWrite(in4, LOW);   // Direction control: IN1
-    digitalWrite(in3, HIGH);  // Direction control: IN2 (sets rotation direction)
-    digitalWrite(enB, HIGH);  // Enable motor B driver
+    digitalWrite(in3, LOW);   // Direction control: IN1
+    digitalWrite(in4, LOW);  // Direction control: IN2 (sets rotation direction)
+    digitalWrite(enB, LOW);  // Enable motor B driver
 }
 
-void speedUp() {}
+void speedUp() {
+    // Increase speed by increment, but don't exceed max
+    if (currentSpeed + SPEED_INCREMENT <= MAX_SPEED) {
+        currentSpeed += SPEED_INCREMENT;
+    } else {
+        currentSpeed = MAX_SPEED;  // Cap at max speed
+    }
+    
+    // Apply the new speed to both motors
+    analogWrite(enA, currentSpeed);
+    analogWrite(enB, currentSpeed);
+    
+    // Optional: Print current speed for debugging
+    Serial.print("Speed increased to: ");
+    Serial.println(currentSpeed);
+}
 
-void slowDown() {}
+void slowDown() {
+    // Decrease speed by increment, but don't go below 0
+    if (currentSpeed - SPEED_INCREMENT >= 0) {
+        currentSpeed -= SPEED_INCREMENT;
+    } else {
+        currentSpeed = 0;  // Don't go below 0
+    }
+    
+    // Apply the new speed to both motors
+    analogWrite(enA, currentSpeed);
+    analogWrite(enB, currentSpeed);
+    
+    // Optional: Print current speed for debugging
+    Serial.print("Speed decreased to: ");
+    Serial.println(currentSpeed);
+}

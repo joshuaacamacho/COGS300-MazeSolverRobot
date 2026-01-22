@@ -4,30 +4,54 @@ int enA = 9;   // Enable pin for Motor A — must be a PWM-capable pin
 int in1 = 8;   // Direction control pin 1 for Motor A
 int in2 = 7;   // Direction control pin 2 for Motor A
 
-int enB = 5    // Enable pin for Motor A — must be a PWM-capable pin
-int in3 = 2;   // Direction control pin 2 for Motor B
+int enB = 5;    // Enable pin for Motor B — must be a PWM-capable pin
+int in3 = 2;   // Direction control pin 1 for Motor B
 int in4 = 4;   // Direction control pin 2 for Motor B 
 
-void setup() {c:\Users\joshu\school\2025W2-cogs300\COGS300-MazeSolverRobot\src\MyRobot-V1\Motor.ino
+int currentSpeed = 150;  // Default medium speed (0-255)
+const int SPEED_INCREMENT = 25;
+const int MAX_SPEED = 255;
+
+void setup() {
     // put your setup code here, to run once:
     Serial.begin(9600);
+
+    pinMode(enA, OUTPUT);
+    pinMode(in1, OUTPUT);
+    pinMode(in2, OUTPUT);
+
+    pinMode(enB, OUTPUT);
+    pinMode(in3, OUTPUT);
+    pinMode(in4, OUTPUT);
 }
 
 void loop() {
-    // put your main code here, to run repeatedly:
-
-    // Drive for 1 second
-    logInfo(Serial, "Driving");
-    drive(in1, in2, enA);
-    delay(1000);
-
-    // Stop for 1 second
-    logInfo(Serial, "Stopping");
-    stop(in1, in2, enA);
-    delay(1000);
-
-    // Stop for 1 second
-    logInfo(Serial, "Driving Backwards");
-    backwards(in1, in2, enA);
-    delay(1000);
+    if (Serial.available()) {
+        char command = Serial.read();
+        
+        switch(command) {
+            case 'w':  // Forward
+                driveForward();
+                break;
+            case 's':  // Backward
+                driveBackward();
+                break;
+            case 'a':  // Turn left
+                turnLeft();
+                break;
+            case 'd':  // Turn right
+                turnRight();
+                break;
+            case 'j':  // Speed up
+                speedUp();
+                break;
+            case 'k':  // Slow down
+                slowDown();
+                break;
+            case ' ':  // Stop
+                stopMotors();
+                break;
+        }
+    }
 }
+
