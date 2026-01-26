@@ -1,2 +1,5 @@
-# MyRobot
-The template repository for the COGS 300 lab robots. You can edit this template as much as you want.
+Our Maze Solving Robot for UBC COGS 300.
+
+Group Members: Joshua, Jaemoon, Waleed, and Morgan
+
+
