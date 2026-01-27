@@ -7,9 +7,6 @@
  *
  * The motor direction is controlled via two input pins,
  * while a separate enable pin turns the motor on or off.
- *
- * @author Paul Bucci
- * @date 2026
  */
 
 /**

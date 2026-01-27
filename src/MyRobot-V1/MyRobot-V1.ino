@@ -24,132 +24,153 @@
  * - Motor A (Left): enA=9, in1=8, in2=7
  * - Motor B (Right): enB=5, in3=2, in4=4
  * 
- * @author Your Name
+ * @author Joshua, Waleed, Jaemoon, Morgan
  * @version 1.0
- * @date 2024
+ * @date 2026
  */
 
 #include <Arduino.h>
+#include <WiFiS3.h>  // WiFi library for UNO R4 WiFi
 
-// ===== PIN DEFINITIONS =====
-/** @brief Enable pin for Motor A (PWM capable) - controls left wheel speed */
+// ===== WIFI CREDENTIALS =====
+/** @brief WiFi network name - CHANGE THIS */
+const char* ssid = "YOUR_WIFI_NAME";
+/** @brief WiFi password - CHANGE THIS */
+const char* password = "YOUR_WIFI_PASSWORD";
+
+// ===== SERVER SETTINGS =====
+/** @brief TCP port for robot control server */
+const int port = 8080;
+/** @brief WiFi server object */
+WiFiServer server(port);
+
+// ===== MOTOR PIN DEFINITIONS =====
+/** @brief Enable pin for Motor A (PWM) - left wheel */
 int enA = 9;
-/** @brief Direction control pin 1 for Motor A */
+/** @brief Direction pin 1 for Motor A */
 int in1 = 8;
-/** @brief Direction control pin 2 for Motor A */
+/** @brief Direction pin 2 for Motor A */
 int in2 = 7;
 
-/** @brief Enable pin for Motor B (PWM capable) - controls right wheel speed */
+/** @brief Enable pin for Motor B (PWM) - right wheel */
 int enB = 5;
-/** @brief Direction control pin 1 for Motor B */
+/** @brief Direction pin 1 for Motor B */
 int in3 = 2;
-/** @brief Direction control pin 2 for Motor B */
+/** @brief Direction pin 2 for Motor B */
 int in4 = 4;
 
 // ===== SPEED SETTINGS =====
-/** 
- * @brief Current motor speed (0-255)
- * @note 150 is approximately 59% of max speed
- */
+/** @brief Current motor speed (0-255) */
 int currentSpeed = 150;
-/** @brief Amount to increase/decrease speed with each adjustment */
+/** @brief Speed increment/decrement amount */
 const int SPEED_INCREMENT = 25;
-/** @brief Maximum allowed speed value (PWM maximum) */
+/** @brief Maximum PWM value */
 const int MAX_SPEED = 255;
 
-// ===== FUNCTION DECLARATIONS =====
-void drive();
-void backwards();
-void stop();
-void turnLeft();
-void turnRight();
-void speedUp();
-void slowDown();
-
 // ===== SETUP =====
-/**
- * @brief Initializes the robot hardware and serial communication
- * 
- * This function runs once when the Arduino starts or resets.
- * It configures all motor control pins as outputs and starts
- * serial communication at 9600 baud.
- */
 void setup() {
-  // Initialize serial communication for command input
+  // Initialize serial for debugging
   Serial.begin(9600);
+  while (!Serial);  // Wait for serial connection
   
-  // Configure Motor A control pins
+  // Configure motor pins
   pinMode(enA, OUTPUT);
   pinMode(in1, OUTPUT);
   pinMode(in2, OUTPUT);
-  
-  // Configure Motor B control pins
   pinMode(enB, OUTPUT);
   pinMode(in3, OUTPUT);
   pinMode(in4, OUTPUT);
   
-  // Ensure motors are stopped initially
+  // Stop motors initially
   stop();
   
-  Serial.println("Robot ready - Send commands:");
-  Serial.println("  w: Forward");
-  Serial.println("  s: Backward");
-  Serial.println("  a: Turn left");
-  Serial.println("  d: Turn right");
-  Serial.println("  j: Speed up");
-  Serial.println("  k: Slow down");
-  Serial.println("  space: Stop");
-  Serial.println("==============================");
+  // Connect to WiFi
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(ssid);
+  
+  WiFi.begin(ssid, password);
+  
+  // Wait for connection
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  
+  Serial.println("\nWiFi connected!");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+  
+  // Start the server
+  server.begin();
+  Serial.print("Server started on port ");
+  Serial.println(port);
+  Serial.println("Ready for commands...");
 }
 
 // ===== MAIN LOOP =====
-/**
- * @brief Main program loop - checks for and processes serial commands
- * 
- * Continuously monitors the serial port for incoming commands.
- * When a valid command is received, it calls the corresponding
- * motor control function.
- * 
- * Command processing is blocking - the robot will continue
- * moving in the last commanded direction until a new command
- * is received or stop() is called.
- */
 void loop() {
-  // Check if serial data is available
-  if (Serial.available()) {
-    // Read the incoming character
-    char command = Serial.read();
+  // Check for incoming client connections
+  WiFiClient client = server.available();
+  
+  if (client) {
+    Serial.println("New client connected");
     
-    // Process the command
-    switch(command) {
-      case 'w':  // Move forward
-        drive();
-        break;
-      case 's':  // Move backward
-        backwards();
-        break;
-      case 'a':  // Turn left (pivot turn)
-        turnLeft();
-        break;
-      case 'd':  // Turn right (pivot turn)
-        turnRight();
-        break;
-      case 'j':  // Increase speed
-        speedUp();
-        break;
-      case 'k':  // Decrease speed
-        slowDown();
-        break;
-      case ' ':  // Stop all motors
-        stop();
-        break;
-      default:   // Invalid command
-        Serial.print("Unknown command: '");
-        Serial.print(command);
-        Serial.println("'");
-        Serial.println("Valid commands: w, s, a, d, j, k, space");
-        break;
+    // Handle client while connected
+    while (client.connected()) {
+      if (client.available()) {
+        char command = client.read();
+        processCommand(command);
+        
+        // Send acknowledgment back to client
+        client.print("OK:");
+        client.println(command);
+      }
     }
+    
+    // Client disconnected
+    client.stop();
+    Serial.println("Client disconnected");
   }
 }
 
+// ===== COMMAND PROCESSOR =====
+/**
+ * @brief Processes incoming commands from WiFi client
+ * @param command Single character command from client
+ */
+void processCommand(char command) {
+  Serial.print("Received: ");
+  Serial.println(command);
+  
+  switch(command) {
+    case 'w':  // Forward
+      drive();
+      break;
+    case 's':  // Backward
+      backwards();
+      break;
+    case 'a':  // Turn left
+      turnLeft();
+      break;
+    case 'd':  // Turn right
+      turnRight();
+      break;
+    case 'j':  // Speed up
+      speedUp();
+      break;
+    case 'k':  // Slow down
+      slowDown();
+      break;
+    case ' ':  // Stop
+      stop();
+      break;
+    case '?':  // Status request
+      Serial.print("Speed: ");
+      Serial.println(currentSpeed);
+      break;
+    default:
+      Serial.print("Unknown command: ");
+      Serial.println(command);
+      break;
+  }
+}
