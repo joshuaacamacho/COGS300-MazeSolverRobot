@@ -12,103 +12,173 @@
  * @date 2026
  */
 
-
 /**
- * @brief Drives a DC motor in a fixed direction using an H-bridge.
- *
- * @param in1 GPIO pin connected to motor driver A input 1 (direction control)
- * @param in2 GPIO pin connected to motor driver A input 2 (direction control)
- * @param enA GPIO pin connected to motor driver A enable pin (motor on/off)
-*  @param in3 GPIO pin connected to motor driver B input 1 (direction control)
- * @param in4 GPIO pin connected to motor driver B input 2 (direction control)
- * @param enB GPIO pin connected to motor driver B enable pin (motor on/off)
+ * @brief Drives both motors forward at current speed
+ * 
+ * Sets Motor A and Motor B to rotate forward direction
+ * and applies PWM speed to both enable pins.
+ * 
+ * Motor direction truth table:
+ * - in1=LOW, in2=HIGH: Forward
+ * - in3=LOW, in4=HIGH: Forward
  */
 void drive() {
-    digitalWrite(in1, LOW);
-    digitalWrite(in2, HIGH);
-    digitalWrite(in3, LOW);
-    digitalWrite(in4, HIGH);
-
-    analogWrite(enA, currentSpeed);
-    analogWrite(enB, currentSpeed);
+  // Set Motor A forward direction
+  digitalWrite(in1, LOW);
+  digitalWrite(in2, HIGH);
+  
+  // Set Motor B forward direction
+  digitalWrite(in3, LOW);
+  digitalWrite(in4, HIGH);
+  
+  // Apply PWM speed to both motors
+  analogWrite(enA, currentSpeed);
+  analogWrite(enB, currentSpeed);
+  
+  Serial.println("Moving FORWARD");
 }
 
-void stop() {
-    digitalWrite(in1, LOW);
-    digitalWrite(in2, LOW);
-    digitalWrite(in3, LOW);
-    digitalWrite(in4, LOW);
-
-    analogWrite(enA, 0);
-    analogWrite(enB, 0);
-}
-
-// TODO: add your own driving functions here
-
+/**
+ * @brief Drives both motors backward at current speed
+ * 
+ * Sets Motor A and Motor B to rotate backward direction
+ * and applies PWM speed to both enable pins.
+ * 
+ * Motor direction truth table:
+ * - in1=HIGH, in2=LOW: Backward
+ * - in3=HIGH, in4=LOW: Backward
+ */
 void backwards() {
-    digitalWrite(in1, HIGH);
-    digitalWrite(in2, LOW);
-    digitalWrite(in3, HIGH);
-    digitalWrite(in4, LOW);
-
-    analogWrite(enA, currentSpeed);
-    analogWrite(enB, currentSpeed);
+  // Set Motor A backward direction
+  digitalWrite(in1, HIGH);
+  digitalWrite(in2, LOW);
+  
+  // Set Motor B backward direction
+  digitalWrite(in3, HIGH);
+  digitalWrite(in4, LOW);
+  
+  // Apply PWM speed to both motors
+  analogWrite(enA, currentSpeed);
+  analogWrite(enB, currentSpeed);
+  
+  Serial.println("Moving BACKWARD");
 }
 
+/**
+ * @brief Stops both motors immediately
+ * 
+ * Sets all direction pins to LOW and PWM outputs to 0,
+ * effectively braking the motors.
+ * 
+ * Note: Some H-bridge configurations may require different
+ * pin states for active braking vs. coasting.
+ */
+void stop() {
+  // Set all direction pins to LOW
+  digitalWrite(in1, LOW);
+  digitalWrite(in2, LOW);
+  digitalWrite(in3, LOW);
+  digitalWrite(in4, LOW);
+  
+  // Set PWM outputs to 0 (no power)
+  analogWrite(enA, 0);
+  analogWrite(enB, 0);
+  
+  Serial.println("STOPPED");
+}
+
+/**
+ * @brief Executes a left pivot turn
+ * 
+ * Stops the left motor (Motor A) and drives the right
+ * motor (Motor B) forward, causing the robot to pivot
+ * around the left wheel.
+ * 
+ * For a smoother turn, consider reducing the speed of
+ * one motor instead of stopping it completely.
+ */
 void turnLeft() {
-    // Left motor stopped
-    digitalWrite(in1, LOW);
-    digitalWrite(in2, LOW);
-    analogWrite(enA, 0);
-
-    // Right motor forward
-    digitalWrite(in3, LOW);
-    digitalWrite(in4, HIGH);
-    analogWrite(enB, currentSpeed);
+  // Stop left motor (Motor A)
+  analogWrite(enA, 0);
+  digitalWrite(in1, LOW);
+  digitalWrite(in2, LOW);
+  
+  // Drive right motor (Motor B) forward
+  digitalWrite(in3, LOW);
+  digitalWrite(in4, HIGH);
+  analogWrite(enB, currentSpeed);
+  
+  Serial.println("Turning LEFT (pivot)");
 }
 
+/**
+ * @brief Executes a right pivot turn
+ * 
+ * Stops the right motor (Motor B) and drives the left
+ * motor (Motor A) forward, causing the robot to pivot
+ * around the right wheel.
+ * 
+ * For a smoother turn, consider reducing the speed of
+ * one motor instead of stopping it completely.
+ */
 void turnRight() {
-    // Right motor stopped
-    digitalWrite(in3, LOW);
-    digitalWrite(in4, LOW);
-    analogWrite(enB, 0);
-
-    // Left motor forward
-    digitalWrite(in1, HIGH);
-    digitalWrite(in2, LOW);
-    analogWrite(enA, currentSpeed);
+  // Stop right motor (Motor B)
+  analogWrite(enB, 0);
+  digitalWrite(in3, LOW);
+  digitalWrite(in4, LOW);
+  
+  // Drive left motor (Motor A) forward
+  digitalWrite(in1, LOW);
+  digitalWrite(in2, HIGH);
+  analogWrite(enA, currentSpeed);
+  
+  Serial.println("Turning RIGHT (pivot)");
 }
 
+/**
+ * @brief Increases the motor speed by SPEED_INCREMENT
+ * 
+ * Increments currentSpeed by SPEED_INCREMENT, up to MAX_SPEED.
+ * Immediately applies the new speed to both motors if they
+ * are currently enabled.
+ * 
+ * @note Speed changes take effect immediately and persist
+ * until changed again or power is cycled.
+ */
 void speedUp() {
-    // Increase speed by increment, but don't exceed max
-    if (currentSpeed + SPEED_INCREMENT <= MAX_SPEED) {
-        currentSpeed += SPEED_INCREMENT;
-    } else {
-        currentSpeed = MAX_SPEED;  // Cap at max speed
-    }
-    
-    // Apply the new speed to both motors
-    analogWrite(enA, currentSpeed);
-    analogWrite(enB, currentSpeed);
-    
-    // Optional: Print current speed for debugging
-    Serial.print("Speed increased to: ");
-    Serial.println(currentSpeed);
+  // Increase speed, but not above MAX_SPEED
+  currentSpeed = min(currentSpeed + SPEED_INCREMENT, MAX_SPEED);
+  
+  // Apply new speed to both motors
+  analogWrite(enA, currentSpeed);
+  analogWrite(enB, currentSpeed);
+  
+  Serial.print("Speed INCREASED to: ");
+  Serial.println(currentSpeed);
 }
 
+/**
+ * @brief Decreases the motor speed by SPEED_INCREMENT
+ * 
+ * Decrements currentSpeed by SPEED_INCREMENT, down to 0.
+ * Immediately applies the new speed to both motors if they
+ * are currently enabled.
+ * 
+ * @note Speed changes take effect immediately and persist
+ * until changed again or power is cycled.
+ */
 void slowDown() {
-    // Decrease speed by increment, but don't go below 0
-    if (currentSpeed - SPEED_INCREMENT >= 0) {
-        currentSpeed -= SPEED_INCREMENT;
-    } else {
-        currentSpeed = 0;  // Don't go below 0
-    }
-    
-    // Apply the new speed to both motors
-    analogWrite(enA, currentSpeed);
-    analogWrite(enB, currentSpeed);
-    
-    // Optional: Print current speed for debugging
-    Serial.print("Speed decreased to: ");
-    Serial.println(currentSpeed);
+  // Decrease speed, but not below 0
+  currentSpeed = max(currentSpeed - SPEED_INCREMENT, 0);
+  
+  // Apply new speed to both motors
+  analogWrite(enA, currentSpeed);
+  analogWrite(enB, currentSpeed);
+  
+  Serial.print("Speed DECREASED to: ");
+  Serial.println(currentSpeed);
+
+  //If speed reaches 0, actually stop the motors
+  if (currentSpeed == 0) {
+    stop();
 }
