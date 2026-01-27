@@ -1,147 +1,462 @@
 /**
- * @file RobotController.pde
- * @brief Processing-based serial controller for robot navigation
+ * @file WiFiRobotController.pde
+ * @brief Processing-based WiFi controller for Arduino robot
+ * @details This Processing sketch provides a graphical interface to control
+ *          an Arduino UNO R4 WiFi robot over a WiFi network. It connects to
+ *          the Arduino's TCP server and sends control commands when keys
+ *          are pressed.
  * 
- * This Processing sketch provides a graphical interface to control a robot
- * via serial communication. It sends keyboard commands to an Arduino
- * that controls the robot's motors.
+ * @section architecture System Architecture
+ *                        [This GUI] --- WiFi/TCP ---> [Arduino Server] ---> Motors
  * 
- * System Architecture:
- *   Keyboard → Processing → Serial → Arduino → Motor Driver → Robot
+ * @section controls Control Mapping
+ *                    W Key - Move robot forward
+ *                    S Key - Move robot backward  
+ *                    A Key - Turn robot left
+ *                    D Key - Turn robot right
+ *                    J Key - Increase speed
+ *                    K Key - Decrease speed
+ *                    Space - Stop all motors
  * 
- * Connection Requirements:
- * - Arduino connected via USB with matching baud rate (9600)
- * - Processing Serial library installed
- * - Robot firmware (MyRobot-V1.ino) loaded on Arduino
+ * @section requirements Requirements
+ *                       - Processing 3.5.4 or later
+ *                       - Processing Network library (built-in)
+ *                       - Arduino and Processing on same WiFi network
  * 
- * @author Your Name
- * @version 1.0
- * @date 2024
+ * @section setup Setup Instructions
+ *                1. Upload WiFiRobot.ino to Arduino UNO R4 WiFi
+ *                2. Note Arduino's IP address from Serial Monitor
+ *                3. Update arduinoIP variable below (line 49)
+ *                4. Run this Processing sketch
+ *                5. Press control keys to operate robot
+ * 
+ * @author Joshua Camacho
+ * @version 1.0.0
+ * @date 2026
  */
 
-import processing.serial.*;
+import processing.net.*;  // Required for TCP network communication
 
+// ===== NETWORK CONFIGURATION ================================================
 /**
- * @brief Serial port object for communication with Arduino
- * 
- * This object manages the serial connection to the Arduino board.
- * It handles opening/closing the port and sending/receiving data.
+ * @brief Client object for TCP communication with Arduino
+ * @details Manages the connection to the Arduino's WiFi server,
+ *          handles data transmission, and monitors connection status.
  */
-Serial myPort;
+Client client;
 
-// ===== APPLICATION SETUP =====
 /**
- * @brief Initializes the Processing application window and serial connection
+ * @brief Arduino's IP address on the local network
+ * @details Must be updated to match Arduino's actual IP address.
+ *          Find this in the Arduino Serial Monitor after uploading.
+ * @note Default is a placeholder - MUST BE CHANGED for operation
+ */
+String arduinoIP = "192.168.1.100";  ///< REPLACE with Arduino IP
+
+/**
+ * @brief TCP port number for communication
+ * @details Must match the port defined in the Arduino sketch (8080)
+ */
+final int PORT = 8080;  ///< Must match Arduino server port
+
+// ===== APPLICATION STATE VARIABLES ==========================================
+/**
+ * @brief Connection status flag
+ * @details Tracks whether the Processing sketch is successfully
+ *          connected to the Arduino server.
+ * @value true - Connected and ready to send commands
+ * @value false - Disconnected or connection failed
+ */
+boolean connected = false;
+
+/**
+ * @brief Last command sent to Arduino
+ * @details Stores the most recently sent command for display purposes.
+ *          Helps users verify their inputs are being processed.
+ */
+String lastCommand = "None";
+
+/**
+ * @brief Current robot speed (0-255)
+ * @details Tracks the robot's speed locally for display. This value
+ *          is estimated based on commands sent and may not exactly
+ *          match the Arduino's actual speed if packets are lost.
+ */
+int currentSpeed = 150;
+
+/**
+ * @brief Connection attempt counter
+ * @details Tracks how many times connection has been attempted,
+ *          used for controlling reconnection frequency.
+ */
+int connectionAttempts = 0;
+
+// ===== UI CONSTANTS =========================================================
+/**
+ * @brief Application window width in pixels
+ */
+final int WINDOW_WIDTH = 600;
+
+/**
+ * @brief Application window height in pixels  
+ */
+final int WINDOW_HEIGHT = 400;
+
+/**
+ * @brief Background color (dark gray)
+ */
+final color BACKGROUND_COLOR = color(30, 30, 30);
+
+/**
+ * @brief Text color (white)
+ */
+final color TEXT_COLOR = color(255, 255, 255);
+
+/**
+ * @brief Connection status color (green when connected)
+ */
+final color CONNECTED_COLOR = color(0, 255, 0);
+
+/**
+ * @brief Disconnection status color (red when disconnected)
+ */
+final color DISCONNECTED_COLOR = color(255, 0, 0);
+
+// ===== SETUP FUNCTION =======================================================
+/**
+ * @brief Initializes the Processing application
+ * @details Called once when the program starts. Sets up the display
+ *          window, configures text rendering, and attempts to connect
+ *          to the Arduino.
  * 
- * This function is called once when the program starts. It:
- * 1. Creates the display window
- * 2. Opens a serial connection to the first available port
- * 3. Sets up text rendering properties
- * 
- * @note The serial port index [0] assumes the Arduino is the first
- *       serial device. If multiple serial devices are connected,
- *       this may need adjustment.
- * 
- * @warning If no serial port is available, this will throw an exception.
+ * @sideeffects Creates application window, establishes network connection
+ * @return void
  */
 void setup() {
-  // Create application window (400px wide, 200px tall)
-  size(400, 200);
-  
-  // Initialize serial communication
-  // Serial.list()[0] gets the first available serial port
-  // 9600 baud matches the Arduino sketch configuration
-  myPort = new Serial(this, Serial.list()[0], 9600);
+  // Create application window
+  size(WINDOW_WIDTH, WINDOW_HEIGHT);
+  surface.setTitle("WiFi Robot Controller v1.0");
   
   // Configure text rendering
   textAlign(CENTER, CENTER);  // Center text both horizontally and vertically
-  textSize(16);               // Set font size to 16 pixels
+  textSize(16);               // Base font size
+  
+  // Display initialization message
+  println("==========================================");
+  println("WiFi Robot Controller - Processing Client");
+  println("==========================================");
+  println("Target Arduino: " + arduinoIP + ":" + PORT);
+  
+  // Attempt initial connection to Arduino
+  connectToArduino();
 }
 
-// ===== MAIN DRAW LOOP =====
+// ===== MAIN DRAW LOOP =======================================================
 /**
- * @brief Continuously redraws the application interface
+ * @brief Continuously updates the application display
+ * @details Called approximately 60 times per second (Processing's default
+ *          frame rate). Updates the GUI, checks connection status, and
+ *          processes any incoming messages from the Arduino.
  * 
- * This function is called approximately 60 times per second (Processing's
- * default frame rate). It:
- * 1. Clears the screen with a dark background
- * 2. Displays the control instructions
- * 
- * The interface is minimalist, showing only the available controls.
- * No real-time status feedback from the robot is displayed.
+ * @sideeffects Updates screen display, manages reconnection attempts
+ * @return void
  */
 void draw() {
-  // Clear screen with dark gray background (RGB: 30,30,30)
-  background(30);
+  // Clear screen with dark background
+  background(BACKGROUND_COLOR);
   
-  // Set text color to white
-  fill(255);
+  // ===== HEADER SECTION =====
+  drawHeader();
   
-  // Display control instructions centered in the window
-  // \n creates line breaks for better readability
-  text("W/A/S/D = move\nJ/K = speed up/down\nSPACE = stop", 
-       width/2, height/2);
+  // ===== CONNECTION STATUS SECTION =====
+  drawConnectionStatus();
+  
+  // ===== CONTROL INSTRUCTIONS SECTION =====
+  drawControlInstructions();
+  
+  // ===== STATUS DISPLAY SECTION =====
+  drawStatusDisplay();
+  
+  // ===== ARDUINO COMMUNICATION HANDLING =====
+  handleArduinoCommunication();
+  
+  // ===== AUTOMATIC RECONNECTION =====
+  manageReconnection();
 }
 
-// ===== KEYBOARD INPUT HANDLER =====
+// ===== DRAWING HELPER FUNCTIONS =============================================
+
 /**
- * @brief Handles keyboard input and sends commands to the robot
- * 
- * This function is automatically called by Processing whenever any
- * key is pressed. It filters for valid robot commands and sends
- * them via serial to the Arduino.
- * 
- * Valid Commands:
- * - 'w': Move forward
- * - 'a': Turn left
- * - 's': Move backward  
- * - 'd': Turn right
- * - 'j': Increase speed
- * - 'k': Decrease speed
- * - ' ': Stop (spacebar)
- * 
- * @note The function uses println() for debugging, showing sent commands
- *       in the Processing console.
+ * @brief Draws the application header/title
+ * @private
+ * @return void
+ */
+void drawHeader() {
+  fill(TEXT_COLOR);
+  textSize(24);
+  text("WiFi Robot Controller", width/2, 40);
+  textSize(16);
+}
+
+/**
+ * @brief Draws the connection status indicator
+ * @private
+ * @return void
+ */
+void drawConnectionStatus() {
+  if (connected) {
+    fill(CONNECTED_COLOR);
+    text("✓ CONNECTED to Arduino at " + arduinoIP, width/2, 80);
+  } else {
+    fill(DISCONNECTED_COLOR);
+    text("✗ DISCONNECTED - Attempting to reconnect...", width/2, 80);
+  }
+}
+
+/**
+ * @brief Draws the control instructions/legend
+ * @private
+ * @return void
+ */
+void drawControlInstructions() {
+  fill(TEXT_COLOR);
+  textSize(18);
+  text("CONTROL MAPPING", width/2, 120);
+  textSize(16);
+  
+  // Column 1: Movement controls
+  text("MOVEMENT", width/4, 160);
+  text("W = Forward", width/4, 190);
+  text("S = Backward", width/4, 220);
+  text("A = Left Turn", width/4, 250);
+  text("D = Right Turn", width/4, 280);
+  
+  // Column 2: Speed controls
+  text("SPEED CONTROL", 3*width/4, 160);
+  text("J = Speed Up", 3*width/4, 190);
+  text("K = Speed Down", 3*width/4, 220);
+  text("SPACE = Emergency Stop", 3*width/4, 250);
+  
+  // Visual separator line
+  stroke(TEXT_COLOR);
+  strokeWeight(1);
+  line(width/2, 140, width/2, 300);
+  noStroke();
+}
+
+/**
+ * @brief Draws the current status information
+ * @private
+ * @return void
+ */
+void drawStatusDisplay() {
+  fill(TEXT_COLOR);
+  textSize(18);
+  text("CURRENT STATUS", width/2, 320);
+  textSize(16);
+  
+  text("Last Command: " + lastCommand, width/2, 350);
+  text("Speed: " + currentSpeed + " / 255", width/2, 380);
+}
+
+// ===== NETWORK COMMUNICATION FUNCTIONS ======================================
+
+/**
+ * @brief Handles incoming messages from Arduino
+ * @details Checks for available data from the Arduino and processes
+ *          any received messages. Currently logs messages to console.
+ * @private
+ * @return void
+ */
+void handleArduinoCommunication() {
+  if (client != null && client.available() > 0) {
+    String message = client.readStringUntil('\n');
+    if (message != null) {
+      message = message.trim();
+      println("[Arduino] " + message);
+      
+      // Parse acknowledgment messages
+      if (message.startsWith("ACK:")) {
+        String cmd = message.substring(4);
+        println("Command acknowledged: " + cmd);
+      }
+      
+      // Parse speed updates
+      if (message.startsWith("Speed:")) {
+        try {
+          int reportedSpeed = Integer.parseInt(message.substring(6));
+          println("Arduino reports speed: " + reportedSpeed);
+        } catch (NumberFormatException e) {
+          println("Error parsing speed from Arduino");
+        }
+      }
+    }
+  }
+}
+
+/**
+ * @brief Manages automatic reconnection attempts
+ * @details Attempts to reconnect to Arduino every 5 seconds if disconnected
+ * @private
+ * @return void
+ */
+void manageReconnection() {
+  if (!connected && frameCount % 300 == 0) {  // Every 5 seconds (60fps * 5)
+    println("Attempting reconnection...");
+    connectToArduino();
+  }
+}
+
+// ===== KEYBOARD INPUT HANDLER ===============================================
+/**
+ * @brief Processes keyboard input and sends commands to Arduino
+ * @details Called automatically by Processing when any key is pressed.
+ *          Filters for valid robot commands and sends them via TCP.
+ *          Also updates local speed display for immediate feedback.
  * 
  * @param key The character of the key that was pressed
- * @see The corresponding Arduino sketch (MyRobot-V1.ino) for command handling
+ * @return void
  */
 void keyPressed() {
-  // Check if the pressed key is a valid robot command
-  if (key == 'w' || key == 'a' || key == 's' || key == 'd' ||
-      key == 'j' || key == 'k' || key == ' ') {
-    
-    // Send the character to Arduino via serial
-    myPort.write(key);
-    
-    // Log the command to the console for debugging
-    println("Sent: " + key);
+  // Ignore input if not connected
+  if (!connected) {
+    println("WARNING: Not connected to Arduino! Command ignored.");
+    return;
   }
   
-  // Note: Non-command keys are silently ignored
+  // Convert key to lowercase for case-insensitive handling
+  char lowerKey = Character.toLowerCase(key);
+  
+  // Check if key is a valid robot command
+  if (lowerKey == 'w' || lowerKey == 'a' || lowerKey == 's' || lowerKey == 'd' ||
+      lowerKey == 'j' || lowerKey == 'k' || key == ' ') {
+    
+    // Send command to Arduino
+    client.write(lowerKey);
+    lastCommand = formatCommandDisplay(lowerKey);
+    
+    // Log the command
+    println("[Client] Sent command: '" + lowerKey + "'");
+    
+    // Update local speed estimate (for display only)
+    updateLocalSpeedEstimate(lowerKey);
+    
+  } else {
+    // Invalid key pressed
+    println("Invalid key: '" + key + "'. Valid: w,a,s,d,j,k,space");
+  }
 }
 
-// ===== ADDITIONAL NOTES =====
-/*
- * Potential Enhancements:
- * 
- * 1. Status Feedback:
- *    - Add visual indicators for current speed/direction
- *    - Display connection status
- *    - Show last command sent
- * 
- * 2. Error Handling:
- *    - Try-catch for serial port initialization
- *    - Fallback port selection if [0] fails
- *    - Connection loss detection
- * 
- * 3. User Interface:
- *    - On-screen buttons for touch/mouse control
- *    - Speed slider instead of incremental buttons
- *    - Direction pad visualization
- * 
- * 4. Advanced Features:
- *    - Command history
- *    - Macro command sequences
- *    - Data logging from robot sensors
+/**
+ * @brief Formats command character for display
+ * @details Converts special characters (like space) to readable format
+ * @param cmd The command character to format
+ * @return Formatted string for display
+ * @private
  */
+String formatCommandDisplay(char cmd) {
+  if (cmd == ' ') {
+    return "[SPACE]";
+  } else {
+    return "'" + cmd + "'";
+  }
+}
+
+/**
+ * @brief Updates local speed estimate based on command
+ * @details Maintains a local estimate of robot speed for display purposes.
+ *          This is an estimate only - actual speed is controlled by Arduino.
+ * @param cmd The command that was sent
+ * @private
+ * @return void
+ */
+void updateLocalSpeedEstimate(char cmd) {
+  if (cmd == 'j') {
+    currentSpeed = min(currentSpeed + 25, 255);
+  } else if (cmd == 'k') {
+    currentSpeed = max(currentSpeed - 25, 0);
+  }
+  // Movement commands don't change speed estimate
+}
+
+// ===== CONNECTION MANAGEMENT ================================================
+/**
+ * @brief Establishes TCP connection to Arduino WiFi server
+ * @details Attempts to connect to the Arduino at the configured
+ *          IP address and port. Updates connection status and
+ *          provides feedback to the user.
+ * 
+ * @sideeffects Updates 'connected' flag, creates Client object
+ * @return void
+ */
+void connectToArduino() {
+  connectionAttempts++;
+  println("Connection attempt #" + connectionAttempts);
+  println("Target: " + arduinoIP + ":" + PORT);
+  
+  try {
+    // Attempt to create TCP client connection
+    client = new Client(this, arduinoIP, PORT);
+    
+    // Check if connection was successful
+    if (client.active()) {
+      connected = true;
+      println("✓ Successfully connected to Arduino!");
+      println("Ready to send commands.");
+    } else {
+      connected = false;
+      println("✗ Connection failed: Client not active");
+    }
+  } catch (Exception e) {
+    // Connection failed
+    connected = false;
+    println("✗ Connection failed: " + e.getMessage());
+    println("Check:");
+    println("  1. Arduino IP address (" + arduinoIP + ")");
+    println("  2. Arduino is powered and connected to WiFi");
+    println("  3. Both devices on same network");
+    println("  4. No firewall blocking port " + PORT);
+  }
+}
+
+// ===== APPLICATION CLEANUP ==================================================
+/**
+ * @brief Performs cleanup when application closes
+ * @details Called automatically by Processing when the sketch window
+ *          is closed. Ensures proper disconnection from Arduino.
+ * 
+ * @sideeffects Closes network connection, stops motors
+ * @return void
+ */
+void dispose() {
+  println("\n==========================================");
+  println("Application shutting down...");
+  
+  // Send stop command to ensure robot stops
+  if (connected && client != null) {
+    println("Sending final stop command to Arduino");
+    client.write(' ');
+    delay(100);  // Brief delay to ensure transmission
+  }
+  
+  // Close network connection
+  if (client != null) {
+    client.stop();
+    println("Network connection closed");
+  }
+  
+  println("WiFi Robot Controller stopped");
+  println("==========================================");
+}
+
+/**
+ * @brief Manual connection test function
+ * @details Can be called to test connection without waiting for
+ *          automatic reconnection. Useful for debugging.
+ * @private
+ * @return void
+ */
+void manualReconnect() {
+  println("Manual reconnection requested...");
+  connectToArduino();
+}
