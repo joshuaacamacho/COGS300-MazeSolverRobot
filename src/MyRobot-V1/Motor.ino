@@ -95,10 +95,10 @@ void stop() {
  * one motor instead of stopping it completely.
  */
 void turnLeft() {
-  // Stop left motor (Motor A)
-  analogWrite(enA, 0);
+  // slow down left motor (Motor A)
   digitalWrite(in1, LOW);
-  digitalWrite(in2, LOW);
+  digitalWrite(in2, HIGH);
+  analogWrite(enA, currentSpeed/2);
   
   // Drive right motor (Motor B) forward
   digitalWrite(in3, LOW);
@@ -119,10 +119,10 @@ void turnLeft() {
  * one motor instead of stopping it completely.
  */
 void turnRight() {
-  // Stop right motor (Motor B)
-  analogWrite(enB, 0);
+  // slow down right motor (Motor B)
   digitalWrite(in3, LOW);
-  digitalWrite(in4, LOW);
+  digitalWrite(in4, HIGH);
+  analogWrite(enB, currentSpeed/2);
   
   // Drive left motor (Motor A) forward
   digitalWrite(in1, LOW);
@@ -178,4 +178,33 @@ void slowDown() {
   //If speed reaches 0, actually stop the motors
   if (currentSpeed == 0) {
     stop();
+  }
+}
+
+void spinLeftInPlace() {
+  //left motor (Motor A) go backwards
+  digitalWrite(in1, HIGH);
+  digitalWrite(in2, LOW);
+  analogWrite(enA, currentSpeed);
+  
+  //right motor (Motor B) go forward
+  digitalWrite(in3, LOW);
+  digitalWrite(in4, HIGH);
+  analogWrite(enB, currentSpeed);
+  
+  Serial.println("Spinning LEFT");
+}
+
+void spinRightInPlace() {
+// right motor (Motor B) go backwards
+  digitalWrite(in3, HIGH);
+  digitalWrite(in4, LOW);
+  analogWrite(enB, currentSpeed);
+  
+  // left motor (Motor A) go forward
+  digitalWrite(in1, LOW);
+  digitalWrite(in2, HIGH);
+  analogWrite(enA, currentSpeed);
+  
+  Serial.println("Spinning RIGHT");
 }

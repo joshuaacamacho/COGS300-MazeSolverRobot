@@ -34,9 +34,9 @@
 
 // ===== WIFI CREDENTIALS =====
 /** @brief WiFi network name - CHANGE THIS */
-const char* ssid = "YOUR_WIFI_NAME";
+const char* ssid = "RobotNet";
 /** @brief WiFi password - CHANGE THIS */
-const char* password = "YOUR_WIFI_PASSWORD";
+const char* password = "robot1234";
 
 // ===== SERVER SETTINGS =====
 /** @brief TCP port for robot control server */
@@ -160,6 +160,12 @@ void processCommand(char command) {
       break;
     case 'k':  // Slow down
       slowDown();
+      break;
+    case 'q':  // Spin left
+      spinLeftInPlace();
+      break;
+    case 'e':  // Spin right
+      spinRightInPlace();
       break;
     case ' ':  // Stop
       stop();
