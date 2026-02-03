@@ -22,7 +22,7 @@
 import processing.net.*;
 
 // ===== NETWORK SETTINGS =====
-String arduinoIP = "192.168.137.3"; // CHANGE to your Arduino IP
+String arduinoIP = "192.168.137.4"; // CHANGE to your Arduino IP
 final int PORT = 8080;
 Client client;
 boolean connected = false;
