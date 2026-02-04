@@ -1,3 +1,4 @@
+
 /**
  * @file Serial.ino
  * @brief Minimal serial logging helpers.
