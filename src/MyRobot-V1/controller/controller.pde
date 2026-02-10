@@ -22,7 +22,7 @@
 import processing.net.*;
 
 // ===== NETWORK SETTINGS =====
-String arduinoIP = "192.168.137.4"; // CHANGE to your Arduino IP
+String arduinoIP = "192.168.137.220"; // CHANGE to your Arduino IP
 final int PORT = 8080;
 Client client;
 boolean connected = false;
@@ -94,12 +94,18 @@ void drawControls() {
   text("S = Backward", width/4, 220);
   text("A = Left Turn", width/4, 250);
   text("D = Right Turn", width/4, 280);
+  text("P = Print Calibration Status", width/4, 310);
+  text("F = Automode", width/4, 340);
+  
   
   // Right column
   text("SPEED", 3*width/4, 160);
-  text("J = Speed Up", 3*width/4, 190);
-  text("K = Speed Down", 3*width/4, 220);
-  text("SPACE = Stop", 3*width/4, 250);
+  text("SPACE = Stop", 3*width/4, 190);
+  text("J = Speed Up", 3*width/4, 220);
+  text("K = Speed Down", 3*width/4, 250);
+  text("C = Quick Calibrate", 3*width/4, 280);
+  text("SPACE = Stop", 3*width/4, 310);
+  
   
   stroke(255);
   line(width/2, 140, width/2, 300);
@@ -168,7 +174,8 @@ void keyPressed() {
   
   char c = Character.toLowerCase(key);
   boolean valid = (c == 'w' || c == 'a' || c == 's' || c == 'd' ||
-                   c == 'j' || c == 'k' || key == ' ');
+                   c == 'j' || c == 'k' || c == 'q' || c == 'e' ||
+                   c == 'p' || c == 'c' || c == 'f' || key == ' ');
   
   if (valid) {
     client.write(c);  // send single char
