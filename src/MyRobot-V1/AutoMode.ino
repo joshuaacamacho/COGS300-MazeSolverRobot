@@ -1,28 +1,34 @@
 void rightWallFollow() {
   frontDist = getDistance(TRIG_FRONT, ECHO_FRONT);
   rightDist = getDistance(TRIG_RIGHT, ECHO_RIGHT);
-  if (rightDist < 0) {
-      rightDist = targetDistance;
-    }
-    
-    // calculate PID error
-    // error > 0: too close -> turn left (away from wall)
-    // error < 0: too far -> turn right (towards wall)
-    float error = targetDistance - rightDist;
-    float correction = error * kp;
-    correction = constrain(correction, -25, 25);
-    
-    int leftSpeed  = currentSpeed + correction;
-    int rightSpeed = currentSpeed - correction;
 
-    leftSpeed  = constrain(leftSpeed,  100, 200);
-    rightSpeed = constrain(rightSpeed, 100, 200);
 
-    if (frontDist > 0 && frontDist < frontStopDist + 10) {
+    if (frontDist > 0 && frontDist < frontStopDist) {
       Serial.println("Corner Detected! Turning Left.");
+      stop();
+      delay(100);
       turnLeft();
       delay(400); // time to turn 90 degrees
+      stop();
+      delay(100);
     } else {
+      
+      if (rightDist < 0) {
+        rightDist = targetDistance;
+      }
+    
+      // calculate PID error
+      // error > 0: too close -> turn left (away from wall)
+      // error < 0: too far -> turn right (towards wall)
+      float error = targetDistance - rightDist;
+      float correction = error * kp;
+      correction = constrain(correction, -25, 25);
+      
+      int leftSpeed  = currentSpeed + correction;
+      int rightSpeed = currentSpeed - correction;
+
+      leftSpeed  = constrain(leftSpeed,  100, 200);
+      rightSpeed = constrain(rightSpeed, 100, 200);
       drive(leftSpeed, rightSpeed);
     }
   delay(50);

@@ -22,7 +22,7 @@
 import processing.net.*;
 
 // ===== NETWORK SETTINGS =====
-String arduinoIP = "192.168.137.220"; // CHANGE to your Arduino IP
+String arduinoIP = "192.168.137.101"; // CHANGE to your Arduino IP
 final int PORT = 8080;
 Client client;
 boolean connected = false;
@@ -94,8 +94,7 @@ void drawControls() {
   text("S = Backward", width/4, 220);
   text("A = Left Turn", width/4, 250);
   text("D = Right Turn", width/4, 280);
-  text("P = Print Calibration Status", width/4, 310);
-  text("F = Automode", width/4, 340);
+  text("F = Automode", width/4, 310);
   
   
   // Right column

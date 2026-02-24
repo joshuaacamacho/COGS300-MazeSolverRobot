@@ -4,15 +4,6 @@
  */
 
 #include <Arduino.h>
-#include <WiFiS3.h>
-
-// WIFI CREDENTIALS 
-const char* ssid     = "RobotNet";
-const char* password = "robot1234";
-
-// SERVER SETTINGS 
-const int port = 8080;
-WiFiServer server(port);
 
 // MOTOR PINS
 const int enA = 5;   // Right motor PWM
@@ -23,10 +14,6 @@ const int enB = 9;   // Left motor PWM
 const int in3 = 8;
 const int in4 = 7;
 
-// ENCODER PINS
-const int LEFT_ENCODER_PIN = A3;
-const int RIGHT_ENCODER_PIN = A2;
-
 // ULTRASONIC SENSOR PINS
 const int TRIG_FRONT = 12;
 const int ECHO_FRONT = 11;
@@ -34,43 +21,10 @@ const int ECHO_FRONT = 11;
 const int TRIG_RIGHT = 13;
 const int ECHO_RIGHT = 10;
 
-// PHYSICAL CONSTANTS 
-const int ENCODER_HOLES = 20;
-const float WHEEL_DIAMETER = 6;
-const float WHEEL_CIRCUMFERENCE = WHEEL_DIAMETER * PI;
-const float COUNTS_PER_ROTATION = ENCODER_HOLES;
-
-//  ENHANCED CALIBRATION SYSTEM 
-// Separate calibration for forward and backward!
-float leftCalibrationForward = 1.0;
-float rightCalibrationForward = 1.0;
-float leftCalibrationBackward = 1.0;
-float rightCalibrationBackward = 1.0;
-
-float calibrationFactor = 0.05;  // Increased for faster adjustment
-const float MAX_CALIBRATION = 2.0;  // Allow up to 200% power
-const float MIN_CALIBRATION = 0.5;  // Allow down to 50% power
-bool calibrationEnabled = true;
-
-// Track movement direction
-enum Direction { FORWARD, BACKWARD, TURNING, STOPPED };
-Direction currentDirection = STOPPED;
-
-// ENCODER VARIABLES 
-int leftEncoderCount = 0;
-int rightEncoderCount = 0;
-int lastLeftState = LOW;
-int lastRightState = LOW;
-
-// MEASUREMENT VARIABLES 
-float leftDistance = 0.0;
-float rightDistance = 0.0;
-
-// MOVEMENT TRACKING 
-bool isMoving = false;
-unsigned long movementStartTime = 0;
-float movementStartLeftDistance = 0.0;
-float movementStartRightDistance = 0.0;
+// IR SENSOR PINS
+const int LEFT_IR = A5;
+const int RIGHT_IR = A4;
+const int MIDDLE_IR = A2;
 
 // AUTOMODE SETTINGS
 float targetDistance = 20.0;  // Target distance from right wall
@@ -97,61 +51,34 @@ void setup() {
   pinMode(in3, OUTPUT);
   pinMode(in4, OUTPUT);
 
-  // Encoder pins
-  pinMode(LEFT_ENCODER_PIN, INPUT_PULLUP);
-  pinMode(RIGHT_ENCODER_PIN, INPUT_PULLUP);
-
   // Ultrasonic sensor pins
   pinMode(TRIG_FRONT, OUTPUT);
   pinMode(ECHO_FRONT, INPUT);
   pinMode(TRIG_RIGHT, OUTPUT);
   pinMode(ECHO_RIGHT, INPUT);
 
+  // IR Sensor Pins
+  pinMode(LEFT_IR, INPUT);
+  pinMode(RIGHT_IR, INPUT);
+  pinMode(MIDDLE_IR, INPUT);
+
   stop();
-
- Serial.begin(9600);
-  while(!Serial);  // wait for serial monitor
-
-  // Connect to WiFi 
-  Serial.print("[INFO] Connecting to WiFi: ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, password);
-
-  // Wait for connection
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-
-  Serial.println("\n[INFO] WiFi connected!");
-  Serial.print("[INFO] Robot IP: ");
-  Serial.println(WiFi.localIP());
-
-  // Start server
-  server.begin();
-  Serial.println("[INFO] Server started on port 8080");
 }
 
 // MAIN LOOP 
 void loop() {
-  readEncoders();
-  
-  WiFiClient client = server.available();
-  if (client) {
-    Serial.println("Client connected");
-    while (client.connected()) {
-      if (client.available()) {
-        char command = client.read();
-        processCommand(command);
-        client.print("OK:");
-        client.println(command);
-      }
-      readEncoders();
-      if (isAutoMode) {
-        rightWallFollow();
-      }
-    }
-    client.stop();
-    Serial.println("Client disconnected");
+  int L = analogRead(LEFT_IR);
+  int M = analogRead(MIDDLE_IR);
+  int R = analogRead(RIGHT_IR);
+
+  if (M < 50 && L >= 50 && R >= 50) { // Only Center detects line
+    drive();
+  } else if (L < 59) { // Only Left
+    turnLeft();
+  } else if (R < 50) { // Only Right
+    turnRight();
+  } else if (L >= 50 && M >= 50 && R >= 50) { // No line
+    stop();
   }
+  delay(100);
 }
