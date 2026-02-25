@@ -1,84 +1,96 @@
-/**
- * @file MyRobot-V1.ino
- * @brief Improved auto-calibration with backward movement support
- */
-
 #include <Arduino.h>
 
-// MOTOR PINS
-const int enA = 5;   // Right motor PWM
-const int in1 = 2;
-const int in2 = 4;
+// ===== MOTOR PINS =====
+const int enA = 9;
+const int in1 = 8;
+const int in2 = 7;
 
-const int enB = 9;   // Left motor PWM
-const int in3 = 8;
-const int in4 = 7;
+const int enB = 5;
+const int in3 = 4;
+const int in4 = 2;
 
-// ULTRASONIC SENSOR PINS
+// ===== IR PINS =====
+const int LEFT_IR   = A5;
+const int MIDDLE_IR = A2;
+const int RIGHT_IR  = A4;
+
+// ===== ULTRASONIC =====
 const int TRIG_FRONT = 12;
 const int ECHO_FRONT = 11;
 
 const int TRIG_RIGHT = 13;
 const int ECHO_RIGHT = 10;
 
-// IR SENSOR PINS
-const int LEFT_IR = A5;
-const int RIGHT_IR = A4;
-const int MIDDLE_IR = A2;
-
-// AUTOMODE SETTINGS
-float targetDistance = 20.0;  // Target distance from right wall
-int frontStopDist = 15; // Distance to turn at corners
-float kp = 15.0; // PID Proportional gain and Derivative gain
+// ===== GLOBAL STATE =====
+int currentSpeed = 120;
+bool manualControl = true;
 bool isAutoMode = false;
-float frontDist, rightDist;
 
-// SPEED SETTINGS 
-int currentSpeed = 150;
-const int SPEED_INCREMENT = 25;
-const int MAX_SPEED = 255;
+// ===== AUTO VARIABLES =====
+float targetDistance = 20.0;
+int frontStopDist = 15;
+float kp = 15.0;
 
-// SETUP 
+float frontDist;
+float rightDist;
+
+// ===== SETUP =====
 void setup() {
   Serial.begin(9600);
-  while (!Serial);
 
-  // Motor pins
   pinMode(enA, OUTPUT);
   pinMode(in1, OUTPUT);
   pinMode(in2, OUTPUT);
+
   pinMode(enB, OUTPUT);
   pinMode(in3, OUTPUT);
   pinMode(in4, OUTPUT);
 
-  // Ultrasonic sensor pins
+  pinMode(LEFT_IR, INPUT);
+  pinMode(MIDDLE_IR, INPUT);
+  pinMode(RIGHT_IR, INPUT);
+
   pinMode(TRIG_FRONT, OUTPUT);
   pinMode(ECHO_FRONT, INPUT);
   pinMode(TRIG_RIGHT, OUTPUT);
   pinMode(ECHO_RIGHT, INPUT);
 
-  // IR Sensor Pins
-  pinMode(LEFT_IR, INPUT);
-  pinMode(RIGHT_IR, INPUT);
-  pinMode(MIDDLE_IR, INPUT);
-
-  stop();
+  stopMotors();
 }
 
-// MAIN LOOP 
+// ===== LOOP =====
 void loop() {
-  int L = analogRead(LEFT_IR);
-  int M = analogRead(MIDDLE_IR);
-  int R = analogRead(RIGHT_IR);
 
-  if (M < 50 && L >= 50 && R >= 50) { // Only Center detects line
-    drive();
-  } else if (L < 59) { // Only Left
-    turnLeft();
-  } else if (R < 50) { // Only Right
-    turnRight();
-  } else if (L >= 50 && M >= 50 && R >= 50) { // No line
-    stop();
+  if (Serial.available()) {
+    char cmd = Serial.read();
+    processCommand(cmd);
   }
-  delay(100);
+
+  if (isAutoMode) {
+    rightWallFollow();
+    return;
+  }
+
+  if (!manualControl) {
+    int L = analogRead(LEFT_IR);
+    int M = analogRead(MIDDLE_IR);
+    int R = analogRead(RIGHT_IR);
+
+    int threshold = 500;
+
+    if (M < threshold) {
+      drive();
+    }
+    else if (L < threshold) {
+      turnLeft();
+    }
+    else if (R < threshold) {
+      turnRight();
+    }
+    else {
+      drive();
+    }
+
+    return;
+  }
 }

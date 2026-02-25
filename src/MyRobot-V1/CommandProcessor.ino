@@ -1,24 +1,53 @@
-void processCommand(char command) {
-  Serial.print("Command: ");
-  Serial.println(command);
+void processCommand(char cmd) {
 
-  switch (command) {
-    case 'w': drive(); break;
-    case 's': backwards(); break;
-    case 'a': turnLeft(); break;
-    case 'd': turnRight(); break;
-    case ' ': 
-      stop();
+  cmd = tolower(cmd);
+
+  switch (cmd) {
+
+    case 'w':
+      manualControl = true;
+      isAutoMode = false;
+      drive();
+      break;
+
+    case 's':
+      manualControl = true;
+      isAutoMode = false;
+      backwards();
+      break;
+
+    case 'a':
+      manualControl = true;
+      isAutoMode = false;
+      turnLeft();
+      break;
+
+    case 'd':
+      manualControl = true;
+      isAutoMode = false;
+      turnRight();
+      break;
+
+    case ' ':
+      stopMotors();
+      break;
+
+    case 'l':   // Line follow
+      manualControl = false;
       isAutoMode = false;
       break;
-    case 'j': speedUp(); break;
-    case 'k': slowDown(); break;
-    case 'f': 
-      rightWallFollow(); 
+
+    case 'f':   // Auto wall follow
       isAutoMode = true;
+      manualControl = false;
       break;
-    default:
-      Serial.println("Unknown command");
+
+    case 'j':
+      currentSpeed = min(currentSpeed + 25, 255);
+      break;
+
+    case 'k':
+      currentSpeed = max(currentSpeed - 25, 0);
       break;
   }
 }
