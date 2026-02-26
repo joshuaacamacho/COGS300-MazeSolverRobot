@@ -72,30 +72,74 @@ bool hasSwept = false;
 void loop() {
 
   if (!hasSwept) {
+
     sweep180();
+
+    int best = getClosestIndex();
+
+    Serial.print("Closest index: ");
+    Serial.println(best);
+
+    int stepsBack = NUM_ANGLES - best;
+
+    rotateLeftSteps(stepsBack);
+
     hasSwept = true;
   }
-
 }
 
 void sweep180() {
 
-  Serial.println("Starting sweep...");
+  Serial.println("---- DEPTH MAP ----");
 
   for (int i = 0; i < NUM_ANGLES; i++) {
 
     turnRightSmallStep();
-    delay(100);  // let vibration settle
+    delay(80);
 
     float d = getDistance(TRIG_FRONT, ECHO_FRONT);
-
     distances[i] = d;
 
-    Serial.print("Angle ");
+    Serial.print("Index ");
+    Serial.print(i);
+    Serial.print("  Angle ");
     Serial.print(i * 15);
-    Serial.print(" deg: ");
-    Serial.print(d);
-    Serial.println(" cm");
+    Serial.print("°  Distance: ");
+    Serial.println(d);
   }
-  Serial.println("Sweep done.");
+
+  Serial.println("-------------------");
+}
+
+int getClosestIndex() {
+
+  int minIndex = 0;
+  float minDist = distances[0];
+
+  for (int i = 1; i < NUM_ANGLES; i++) {
+    if (distances[i] < minDist && distances[i] > 0) {
+      minDist = distances[i];
+      minIndex = i;
+    }
+  }
+
+  return minIndex;
+}
+
+void rotateLeftSteps(int steps) {
+
+  for (int i = 0; i < steps; i++) {
+
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, HIGH);
+    digitalWrite(in3, LOW);
+    digitalWrite(in4, HIGH);
+
+    analogWrite(enA, 70);
+    analogWrite(enB, 70);
+
+    delay(sweepTurnDelay);
+    stopMotors();
+    delay(80);
+  }
 }
