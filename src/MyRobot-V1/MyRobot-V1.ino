@@ -22,7 +22,7 @@ const int TRIG_RIGHT = 13;
 const int ECHO_RIGHT = 10;
 
 // ===== GLOBAL STATE =====
-int currentSpeed = 120;
+int currentSpeed = 70;
 bool manualControl = true;
 bool isAutoMode = false;
 
@@ -33,6 +33,8 @@ float kp = 15.0;
 
 float frontDist;
 float rightDist;
+
+int lastTurn = 0;   // -1 left, 1 right, 0 straight
 
 // ===== SETUP =====
 void setup() {
@@ -78,18 +80,40 @@ void loop() {
 
     int threshold = 500;
 
-    if (M < threshold) {
-      drive();
+if (M < threshold) {
+    drive();
+    lastTurn = 0;
+}
+else if (L < threshold) {
+    turnLeft();
+    lastTurn = -1;
+}
+else if (R < threshold) {
+    turnRight();
+    lastTurn = 1;
+}
+else {
+    // all sensors off → recover in last direction
+    if (lastTurn == -1) {
+        turnLeft();
     }
-    else if (L < threshold) {
-      turnLeft();
-    }
-    else if (R < threshold) {
-      turnRight();
+    else if (lastTurn == 1) {
+        turnRight();
     }
     else {
-      drive();
+        drive();
     }
+}
+    
+Serial.print("L: ");
+Serial.print(L);
+
+Serial.print("  M: ");
+Serial.print(M);
+
+Serial.print("  R: ");
+Serial.println(R);
+
 
     return;
   }

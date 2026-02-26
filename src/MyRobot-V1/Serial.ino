@@ -1,44 +1,49 @@
+float getDistance(int trigPin, int echoPin) {
 
-/**
- * @file Serial.ino
- * @brief Minimal serial logging helpers.
- *
- * Very small logging utilities that print tagged messages to an
- * Arduino Stream (e.g. Serial). No wrapping or redefining of serial
- * functions—only uses Stream::print/println.
- *
- * @author Paul Bucci
- * @date 2026
- */
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
 
-#include <Arduino.h>
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
 
-/**
- * @brief Print an informational log message.
- *
- * Format:
- *   [INFO] <message>
- *
- * @param out Stream to write to (e.g. Serial)
- * @param msg Null-terminated message string
- */
-inline void logInfo(Stream& out, const char* msg) {
-  unsigned long timestamp = millis();
-  out.print(timestamp);
-  out.print(F("\t[INFO] "));
-  out.println(msg);
+  digitalWrite(trigPin, LOW);
+
+  long duration = pulseIn(echoPin, HIGH, 30000);
+
+  if (duration == 0) return -1;
+
+  return duration * 0.034 / 2;
 }
 
-/**
- * @brief Print an error log message.
- *
- * Format:
- *   [ERROR] <message>
- *
- * @param out Stream to write to (e.g. Serial)
- * @param msg Null-terminated message string
- */
-inline void logError(Stream& out, const char* msg) {
-  out.print(F("[ERROR] "));
-  out.println(msg);
+void rightWallFollow() {
+
+  frontDist = getDistance(TRIG_FRONT, ECHO_FRONT);
+  rightDist = getDistance(TRIG_RIGHT, ECHO_RIGHT);
+
+  if (frontDist > 0 && frontDist < frontStopDist) {
+    turnLeft();
+    delay(300);
+    return;
+  }
+
+  if (rightDist <= 0) {
+    rightDist = targetDistance;
+  }
+
+  float error = targetDistance - rightDist;
+  float correction = error * kp;
+
+  int leftSpeed  = currentSpeed + correction;
+  int rightSpeed = currentSpeed - correction;
+
+  leftSpeed  = constrain(leftSpeed, 0, 255);
+  rightSpeed = constrain(rightSpeed, 0, 255);
+
+  digitalWrite(in1, LOW);
+  digitalWrite(in2, HIGH);
+  digitalWrite(in3, HIGH);
+  digitalWrite(in4, LOW);
+
+  analogWrite(enA, rightSpeed);
+  analogWrite(enB, leftSpeed);
 }
