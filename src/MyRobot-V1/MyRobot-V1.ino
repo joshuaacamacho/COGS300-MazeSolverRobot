@@ -22,7 +22,7 @@ const int TRIG_RIGHT = 13;
 const int ECHO_RIGHT = 10;
 
 // ===== GLOBAL STATE =====
-int currentSpeed = 70;
+int currentSpeed = 50;
 bool manualControl = true;
 bool isAutoMode = false;
 
@@ -35,6 +35,12 @@ float frontDist;
 float rightDist;
 
 int lastTurn = 0;   // -1 left, 1 right, 0 straight
+
+// ===== SWEEP SETTINGS =====
+const int NUM_ANGLES = 12;     // 180° / 15°
+float distances[NUM_ANGLES];
+
+int sweepTurnDelay = 144;      // adjust for ~15° turn
 
 // ===== SETUP =====
 void setup() {
@@ -61,60 +67,35 @@ void setup() {
 }
 
 // ===== LOOP =====
+bool hasSwept = false;
+
 void loop() {
 
-  if (Serial.available()) {
-    char cmd = Serial.read();
-    processCommand(cmd);
+  if (!hasSwept) {
+    sweep180();
+    hasSwept = true;
   }
 
-  if (isAutoMode) {
-    rightWallFollow();
-    return;
+}
+
+void sweep180() {
+
+  Serial.println("Starting sweep...");
+
+  for (int i = 0; i < NUM_ANGLES; i++) {
+
+    turnRightSmallStep();
+    delay(100);  // let vibration settle
+
+    float d = getDistance(TRIG_FRONT, ECHO_FRONT);
+
+    distances[i] = d;
+
+    Serial.print("Angle ");
+    Serial.print(i * 15);
+    Serial.print(" deg: ");
+    Serial.print(d);
+    Serial.println(" cm");
   }
-
-  if (!manualControl) {
-    int L = analogRead(LEFT_IR);
-    int M = analogRead(MIDDLE_IR);
-    int R = analogRead(RIGHT_IR);
-
-    int threshold = 500;
-
-if (M < threshold) {
-    drive();
-    lastTurn = 0;
-}
-else if (L < threshold) {
-    turnLeft();
-    lastTurn = -1;
-}
-else if (R < threshold) {
-    turnRight();
-    lastTurn = 1;
-}
-else {
-    // all sensors off → recover in last direction
-    if (lastTurn == -1) {
-        turnLeft();
-    }
-    else if (lastTurn == 1) {
-        turnRight();
-    }
-    else {
-        drive();
-    }
-}
-    
-Serial.print("L: ");
-Serial.print(L);
-
-Serial.print("  M: ");
-Serial.print(M);
-
-Serial.print("  R: ");
-Serial.println(R);
-
-
-    return;
-  }
+  Serial.println("Sweep done.");
 }
