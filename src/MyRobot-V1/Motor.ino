@@ -1,153 +1,153 @@
-void drive() {
+#include <Arduino.h>
+
+extern const int enA;
+extern const int in1;
+extern const int in2;
+extern const int enB;
+extern const int in3;
+extern const int in4;
+extern const int DRIVE_SPEED;
+extern const int TURN_SPEED;
+extern const float LEFT_SCALE;
+extern int sweepTurnDelay;
+extern bool objectLocked;
+extern const int TRIG_FRONT;
+extern const int ECHO_FRONT;
+
+float getDistance(int trigPin, int echoPin);
+
+
+// ===== BASIC DRIVE =====
+void drive(int speed) {
 
   digitalWrite(in1, LOW);
   digitalWrite(in2, HIGH);
+  analogWrite(enA, speed);
 
   digitalWrite(in3, HIGH);
   digitalWrite(in4, LOW);
-
-  analogWrite(enA, DRIVE_SPEED);
-  analogWrite(enB, DRIVE_SPEED * LEFT_SCALE);
+  analogWrite(enB, speed * LEFT_SCALE);
 }
 
 
-void backwards() {
-
-  digitalWrite(in1, HIGH);
-  digitalWrite(in2, LOW);
-
-  digitalWrite(in3, LOW);
-  digitalWrite(in4, HIGH);
-
-  analogWrite(enA, DRIVE_SPEED);
-  analogWrite(enB, DRIVE_SPEED * LEFT_SCALE);
-}
-
-
+// ===== STOP =====
 void stopMotors() {
 
-  digitalWrite(in1, LOW);
-  digitalWrite(in2, LOW);
-
-  digitalWrite(in3, LOW);
-  digitalWrite(in4, LOW);
-
+  digitalWrite(in1, LOW);  digitalWrite(in2, LOW);
+  digitalWrite(in3, LOW);  digitalWrite(in4, LOW);
   analogWrite(enA, 0);
   analogWrite(enB, 0);
 }
 
 
+// ===== TURN LEFT =====
+// Left motor reverse, right motor forward
 void turnLeft() {
 
   digitalWrite(in1, LOW);
   digitalWrite(in2, HIGH);
+  analogWrite(enA, TURN_SPEED);
 
   digitalWrite(in3, LOW);
   digitalWrite(in4, HIGH);
-
-  analogWrite(enA, TURN_SPEED);
   analogWrite(enB, TURN_SPEED * LEFT_SCALE);
 }
 
 
+// ===== TURN RIGHT =====
+// Right motor reverse, left motor forward
 void turnRight() {
 
   digitalWrite(in1, HIGH);
   digitalWrite(in2, LOW);
+  analogWrite(enA, TURN_SPEED);
 
   digitalWrite(in3, HIGH);
   digitalWrite(in4, LOW);
-
-  analogWrite(enA, TURN_SPEED);
   analogWrite(enB, TURN_SPEED * LEFT_SCALE);
 }
 
 
-// ===== SMALL SWEEP STEP =====
-void turnRightSmallStep() {
-
-  digitalWrite(in1, HIGH);
-  digitalWrite(in2, LOW);
-
-  digitalWrite(in3, HIGH);
-  digitalWrite(in4, LOW);
-
-  analogWrite(enA, TURN_SPEED);
-  analogWrite(enB, TURN_SPEED * LEFT_SCALE);
-
-  delay(sweepTurnDelay);
-
-  stopMotors();
-}
-
-
-// ===== ROTATE BACK =====
+// ===== ROTATE LEFT STEPS =====
 void rotateLeftSteps(int steps) {
 
   for (int i = 0; i < steps; i++) {
 
     digitalWrite(in1, LOW);
     digitalWrite(in2, HIGH);
+    analogWrite(enA, TURN_SPEED);
 
     digitalWrite(in3, LOW);
     digitalWrite(in4, HIGH);
-
-    analogWrite(enA, TURN_SPEED);
     analogWrite(enB, TURN_SPEED * LEFT_SCALE);
 
     delay(sweepTurnDelay);
-
     stopMotors();
-    delay(120);
+    delay(150);
   }
 }
 
+
+// ===== ROTATE RIGHT STEPS =====
 void rotateRightSteps(int steps) {
 
   for (int i = 0; i < steps; i++) {
 
-    // RIGHT motor backward
     digitalWrite(in1, HIGH);
     digitalWrite(in2, LOW);
+    analogWrite(enA, TURN_SPEED);
 
-    // LEFT motor forward
     digitalWrite(in3, HIGH);
     digitalWrite(in4, LOW);
-
-    analogWrite(enA, TURN_SPEED);
     analogWrite(enB, TURN_SPEED * LEFT_SCALE);
 
     delay(sweepTurnDelay);
-
     stopMotors();
-    delay(120);
+    delay(150);
   }
 }
 
 
+// ===== DRIVE FORWARD STEP =====
 void driveForwardStep() {
 
-  unsigned long start = millis();
+  int lostCount = 0;
+  const int LOST_THRESHOLD = 30;
+  unsigned long startTime = millis();
+  const unsigned long MAX_DRIVE_MS = 3000;
 
-  while (millis() - start < 900) {
+  while (true) {
+
+    if (millis() - startTime > MAX_DRIVE_MS) {
+      Serial.println("Drive timeout — rescanning");
+      stopMotors();
+      objectLocked = false;
+      return;
+    }
 
     float d = getDistance(TRIG_FRONT, ECHO_FRONT);
 
-   if (d > 0 && d < 10) {
-  stopMotors();
-  Serial.println("OBJECT REACHED");
-  return;
-}
-
-    if (d > 0 && d < 20) {
-      analogWrite(enA, DRIVE_SPEED * 0.6);
-      analogWrite(enB, DRIVE_SPEED * LEFT_SCALE * 0.55);
-    } else {
-      drive();
+    if (d > 2 && d < 15) {
+      stopMotors();
+      Serial.println("OBJECT REACHED");
+      while (true);
     }
 
-    delay(50);
-  }
+    if (d <= 0 || d > 200) {
+      lostCount++;
+      if (lostCount >= LOST_THRESHOLD) {
+        Serial.println("Object lost — rescanning");
+        stopMotors();
+        objectLocked = false;
+        return;
+      }
+      drive(DRIVE_SPEED);
+      delay(20);
+      continue;
+    }
 
-  stopMotors();
+    lostCount = 0;
+    drive(DRIVE_SPEED);
+    delay(20);
+  }
 }

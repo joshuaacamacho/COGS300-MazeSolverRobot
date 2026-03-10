@@ -5,49 +5,65 @@ void processCommand(char cmd) {
   switch (cmd) {
 
     case 'w':
-      manualControl = true;
-      isAutoMode = false;
-      drive();
+      mode = 'm';
+      drive(DRIVE_SPEED);
       break;
 
     case 's':
-      manualControl = true;
-      isAutoMode = false;
-      backwards();
+      mode = 'm';
+      digitalWrite(in1, HIGH);
+      digitalWrite(in2, LOW);
+      digitalWrite(in3, LOW);
+      digitalWrite(in4, HIGH);
+      analogWrite(enA, DRIVE_SPEED);
+      analogWrite(enB, DRIVE_SPEED * LEFT_SCALE);
       break;
 
     case 'a':
-      manualControl = true;
-      isAutoMode = false;
+      mode = 'm';
       turnLeft();
       break;
 
     case 'd':
-      manualControl = true;
-      isAutoMode = false;
+      mode = 'm';
       turnRight();
       break;
 
     case ' ':
+      // Hard stop — cancels any mode, keeps LEDs on for debugging
       stopMotors();
+      objectLocked = false;
+      Serial.println("STOP — motors stopped, mode preserved for debugging");
+      // NOTE: mode is NOT reset so LEDs stay on
       break;
 
-    case 'l':   // Line follow
-      manualControl = false;
-      isAutoMode = false;
+    case 'l':
+      noLineCount   = 0;
+      wallSeenCount = 0;
+      mode = 'l';
       break;
 
-    case 'f':   // Auto wall follow
-      isAutoMode = true;
-      manualControl = false;
+    case 'f':
+      noWallCount = 0;
+      mode = 'f';
+      break;
+
+    case 'o':
+      objectLocked       = false;
+      currentFacingSteps = 0;
+      for (int i = 0; i < NUM_ANGLES; i++)
+        belief[i] = 1.0 / NUM_ANGLES;
+      mode = 'o';
       break;
 
     case 'j':
       currentSpeed = min(currentSpeed + 25, 255);
+      Serial.print("Speed: "); Serial.println(currentSpeed);
       break;
 
     case 'k':
       currentSpeed = max(currentSpeed - 25, 0);
+      Serial.print("Speed: "); Serial.println(currentSpeed);
       break;
   }
 }
