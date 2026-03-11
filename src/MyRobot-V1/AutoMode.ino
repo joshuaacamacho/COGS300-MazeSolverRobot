@@ -1,6 +1,13 @@
 // ===== LINE FOLLOW =====
 void lineFollow() {
 
+  // Check serial during line follow so space works
+  if (Serial.available() > 0) {
+    char cmd = Serial.read();
+    processCommand(cmd);
+    if (emergencyStop) return;
+  }
+
   int left   = digitalRead(IR_LEFT);
   int center = digitalRead(IR_CENTER);
   int right  = digitalRead(IR_RIGHT);
@@ -28,29 +35,24 @@ void lineFollow() {
     wallSeenCount = 0;
     noWallCount   = 0;
     stopMotors();
-    delay(300);
-    mode = 'f';
+    delay(500);
+    mode    = 'f';
+    lastLED = 'f';
     return;
   }
 
   // ===== LINE FOLLOW LOGIC =====
-  // 0 = on tape, 1 = off tape
-
-  // Only center on tape — drive straight
   if (center == 0 && left == 1 && right == 1) {
     drive(DRIVE_SPEED);
   }
-  // Left + center on tape — drifting left, turn left to correct
   else if (left == 0 && center == 0 && right == 1) {
     turnLeft();
     delay(50);
   }
-  // Right + center on tape — drifting right, turn right to correct
   else if (right == 0 && center == 0 && left == 1) {
     turnRight();
     delay(50);
   }
-  // Lost line entirely — stop and wait to reacquire
   else {
     stopMotors();
   }
@@ -60,12 +62,23 @@ void lineFollow() {
 // ===== RIGHT WALL FOLLOW =====
 void rightWallFollow() {
 
+  // Check serial so space works
+  if (Serial.available() > 0) {
+    char cmd = Serial.read();
+    processCommand(cmd);
+    if (emergencyStop) return;
+  }
+
   float frontDist = getDistance(TRIG_FRONT, ECHO_FRONT);
   float rightDist = getDistance(TRIG_RIGHT, ECHO_RIGHT);
+
+  Serial.print("Front: "); Serial.print(frontDist);
+  Serial.print("  Right: "); Serial.println(rightDist);
 
   // ===== TRANSITION: wall ended → object detection =====
   if (rightDist <= 0 || rightDist > 50.0) {
     noWallCount++;
+    Serial.print("No wall count: "); Serial.println(noWallCount);
   } else {
     noWallCount = 0;
   }
@@ -79,24 +92,66 @@ void rightWallFollow() {
       belief[i] = 1.0 / NUM_ANGLES;
     stopMotors();
     delay(300);
-    mode = 'o';
+    mode    = 'o';
+    lastLED = 'o';
     return;
   }
 
-  // ===== WALL FOLLOW LOGIC =====
+  // ===== OBSTACLE AHEAD =====
+  // Front wall detected — stop and turn left in place until clear
   if (frontDist > 0 && frontDist < frontStopDist) {
-    turnLeft();
-    delay(300);
+    Serial.println("Front obstacle — turning left");
+    stopMotors();
+    delay(100);
+
+    // Turn left in place until front is clear
+    while (true) {
+      if (Serial.available() > 0) {
+        char cmd = Serial.read();
+        processCommand(cmd);
+        if (emergencyStop) return;
+      }
+
+      frontDist = getDistance(TRIG_FRONT, ECHO_FRONT);
+      if (frontDist <= 0 || frontDist > frontStopDist) break;
+
+      // Left turn in place
+      digitalWrite(in1, LOW);
+      digitalWrite(in2, HIGH);
+      analogWrite(enA, TURN_SPEED);
+      digitalWrite(in3, LOW);
+      digitalWrite(in4, HIGH);
+      analogWrite(enB, TURN_SPEED * LEFT_SCALE);
+      delay(50);
+    }
+
+    stopMotors();
+    delay(200);
     return;
   }
 
-  if (rightDist <= 0) rightDist = targetDistance;
+  // ===== WALL FOLLOW PID =====
+  // No valid right reading — just drive straight
+  if (rightDist <= 0) {
+    drive(currentSpeed);
+    return;
+  }
 
-  float error      = targetDistance - rightDist;
+  float error      = rightDist - targetDistance; // positive = too far, negative = too close
   float correction = error * kp;
 
-  int leftSpeed  = constrain((int)(currentSpeed + correction), 0, 255);
-  int rightSpeed = constrain((int)(currentSpeed - correction), 0, 255);
+  // Clamp correction to avoid spinning
+  correction = constrain(correction, -40, 40);
+
+  // Too far from wall — steer right (slow left motor, speed up right)
+  // Too close to wall — steer left (slow right motor, speed up left)
+  int rightSpeed = constrain((int)(currentSpeed - correction), 60, 200);
+  int leftSpeed  = constrain((int)(currentSpeed + correction), 60, 200);
+
+  Serial.print("Error: "); Serial.print(error);
+  Serial.print("  Correction: "); Serial.print(correction);
+  Serial.print("  R: "); Serial.print(rightSpeed);
+  Serial.print("  L: "); Serial.println(leftSpeed);
 
   digitalWrite(in1, LOW);
   digitalWrite(in2, HIGH);
@@ -104,12 +159,19 @@ void rightWallFollow() {
   digitalWrite(in4, LOW);
 
   analogWrite(enA, rightSpeed);
-  analogWrite(enB, leftSpeed);
+  analogWrite(enB, leftSpeed * LEFT_SCALE);
 }
 
 
 // ===== OBJECT DETECTION =====
 void runObjectDetection() {
+
+  // Check serial during object detection so space works
+  if (Serial.available() > 0) {
+    char cmd = Serial.read();
+    processCommand(cmd);
+    if (emergencyStop) return;
+  }
 
   float d = getDistance(TRIG_FRONT, ECHO_FRONT);
 
@@ -226,7 +288,7 @@ void updateBelief() {
 }
 
 
-// ===== BEST BELIEF INDEX (peak width scoring) =====
+// ===== BEST BELIEF INDEX =====
 int getBestBeliefIndex() {
 
   float bestScore = -1;
@@ -250,6 +312,11 @@ int getBestBeliefIndex() {
     }
 
     float score = belief[i] * width;
+
+    Serial.print("Index "); Serial.print(i);
+    Serial.print(" belief "); Serial.print(belief[i]);
+    Serial.print(" width "); Serial.print(width);
+    Serial.print(" score "); Serial.println(score);
 
     if (score > bestScore) {
       bestScore = score;

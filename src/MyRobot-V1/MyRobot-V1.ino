@@ -21,19 +21,19 @@ const int IR_CENTER = A2;
 const int IR_RIGHT  = A4;
 
 // ===== LED PINS =====
-const int LED_LINE   = 3;   // red
-const int LED_WALL   = 6;   // yellow
-const int LED_OBJECT = A0;  // green
+const int LED_LINE   = 3;
+const int LED_WALL   = 6;
+const int LED_OBJECT = A0;
 
 // ===== SPEED SETTINGS =====
 const int DRIVE_SPEED  = 110;
 const int TURN_SPEED   = 110;
-const float LEFT_SCALE = 0.80;
+const float LEFT_SCALE = 0.78;
 
 // ===== WALL FOLLOW SETTINGS =====
-const float kp             = 2.0;
-const float targetDistance = 15.0;
-const float frontStopDist  = 20.0;
+const float kp             = 0.8;
+const float targetDistance = 10.0;
+const float frontStopDist  = 25.0;
 int currentSpeed           = 110;
 
 // ===== SWEEP SETTINGS =====
@@ -45,6 +45,7 @@ int sweepTurnDelay = 144;
 // ===== GLOBAL STATE =====
 bool objectLocked       = false;
 int  currentFacingSteps = 0;
+bool emergencyStop      = false; // new stop flag
 
 // ===== TRANSITION COUNTERS =====
 int noLineCount   = 0;
@@ -52,8 +53,8 @@ int wallSeenCount = 0;
 int noWallCount   = 0;
 
 // ===== MODE =====
-// 'm' = manual, 'l' = line follow, 'f' = wall follow, 'o' = object detection
-char mode = 'm';
+char mode    = 'm';
+char lastLED = 'm'; // tracks last mode for LED display
 
 
 // ===== FUNCTION DECLARATIONS =====
@@ -79,7 +80,6 @@ void  updateModeLEDs();
 void setup() {
   Serial.begin(9600);
 
-  // Motor pins
   pinMode(enA, OUTPUT);
   pinMode(in1, OUTPUT);
   pinMode(in2, OUTPUT);
@@ -87,31 +87,26 @@ void setup() {
   pinMode(in3, OUTPUT);
   pinMode(in4, OUTPUT);
 
-  // Ultrasonic pins
   pinMode(TRIG_FRONT, OUTPUT);
   pinMode(ECHO_FRONT, INPUT);
   pinMode(TRIG_RIGHT,  OUTPUT);
   pinMode(ECHO_RIGHT,  INPUT);
 
-  // IR pins
   pinMode(IR_LEFT,   INPUT);
   pinMode(IR_CENTER, INPUT);
   pinMode(IR_RIGHT,  INPUT);
 
-  // LED pins
   pinMode(LED_LINE,   OUTPUT);
   pinMode(LED_WALL,   OUTPUT);
   pinMode(LED_OBJECT, OUTPUT);
 
   stopMotors();
 
-  // Warm up ultrasonic sensors
   getDistance(TRIG_FRONT, ECHO_FRONT);
   delay(100);
   getDistance(TRIG_RIGHT, ECHO_RIGHT);
   delay(100);
 
-  // Init belief array
   for (int i = 0; i < NUM_ANGLES; i++)
     belief[i] = 1.0 / NUM_ANGLES;
 
@@ -122,9 +117,17 @@ void setup() {
 // ===== MAIN LOOP =====
 void loop() {
 
+  // Always check serial first
   if (Serial.available() > 0) {
     char cmd = Serial.read();
     processCommand(cmd);
+  }
+
+  // Emergency stop overrides everything
+  if (emergencyStop) {
+    stopMotors();
+    updateModeLEDs();
+    return;
   }
 
   switch (mode) {
@@ -138,23 +141,13 @@ void loop() {
 }
 
 
-// ===== UPDATE MODE LEDS + SERIAL =====
+// ===== UPDATE MODE LEDS =====
 void updateModeLEDs() {
 
-  digitalWrite(LED_LINE,   mode == 'l' ? HIGH : LOW);
-  digitalWrite(LED_WALL,   mode == 'f' ? HIGH : LOW);
-  digitalWrite(LED_OBJECT, mode == 'o' ? HIGH : LOW);
-
-  static char lastMode = ' ';
-  if (mode != lastMode) {
-    lastMode = mode;
-    switch (mode) {
-      case 'm': Serial.println(">> Mode: MANUAL (all LEDs off)");    break;
-      case 'l': Serial.println(">> Mode: LINE FOLLOWING (red)");     break;
-      case 'f': Serial.println(">> Mode: WALL FOLLOWING (yellow)");  break;
-      case 'o': Serial.println(">> Mode: OBJECT DETECTION (green)"); break;
-    }
-  }
+  // LEDs show lastLED not mode — so space keeps LED on
+  digitalWrite(LED_LINE,   lastLED == 'l' ? HIGH : LOW);
+  digitalWrite(LED_WALL,   lastLED == 'f' ? HIGH : LOW);
+  digitalWrite(LED_OBJECT, lastLED == 'o' ? HIGH : LOW);
 }
 
 

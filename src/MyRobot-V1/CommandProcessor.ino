@@ -5,12 +5,16 @@ void processCommand(char cmd) {
   switch (cmd) {
 
     case 'w':
-      mode = 'm';
+      emergencyStop = false;
+      mode    = 'm';
+      lastLED = 'm';
       drive(DRIVE_SPEED);
       break;
 
     case 's':
-      mode = 'm';
+      emergencyStop = false;
+      mode    = 'm';
+      lastLED = 'm';
       digitalWrite(in1, HIGH);
       digitalWrite(in2, LOW);
       digitalWrite(in3, LOW);
@@ -20,40 +24,52 @@ void processCommand(char cmd) {
       break;
 
     case 'a':
-      mode = 'm';
+      emergencyStop = false;
+      mode    = 'm';
+      lastLED = 'm';
       turnLeft();
       break;
 
     case 'd':
-      mode = 'm';
+      emergencyStop = false;
+      mode    = 'm';
+      lastLED = 'm';
       turnRight();
       break;
 
     case ' ':
-      // Hard stop — cancels any mode, keeps LEDs on for debugging
+      // Emergency stop — keeps LED on last active mode
+      emergencyStop = true;
       stopMotors();
       objectLocked = false;
-      Serial.println("STOP — motors stopped, mode preserved for debugging");
-      // NOTE: mode is NOT reset so LEDs stay on
+      Serial.println("STOP — motors stopped, LED preserved");
       break;
 
     case 'l':
+      emergencyStop = false;
       noLineCount   = 0;
       wallSeenCount = 0;
-      mode = 'l';
+      mode    = 'l';
+      lastLED = 'l';
       break;
 
     case 'f':
+      emergencyStop = false;
       noWallCount = 0;
-      mode = 'f';
+      stopMotors();
+      delay(500);
+      mode    = 'f';
+      lastLED = 'f';
       break;
 
     case 'o':
+      emergencyStop      = false;
       objectLocked       = false;
       currentFacingSteps = 0;
       for (int i = 0; i < NUM_ANGLES; i++)
         belief[i] = 1.0 / NUM_ANGLES;
-      mode = 'o';
+      mode    = 'o';
+      lastLED = 'o';
       break;
 
     case 'j':
