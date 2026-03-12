@@ -47,6 +47,7 @@ bool objectLocked       = false;
 int  currentFacingSteps = 0;
 bool emergencyStop      = false;
 char manualCommand      = ' ';
+int  lastTurnDirection  = 0;
 
 // ===== TRANSITION COUNTERS =====
 int noLineCount   = 0;

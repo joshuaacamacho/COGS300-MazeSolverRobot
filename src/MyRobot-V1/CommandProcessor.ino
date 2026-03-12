@@ -41,10 +41,11 @@ void processCommand(char cmd) {
       break;
 
     case 'l':
-      emergencyStop = false;
-      manualCommand = ' ';
-      noLineCount   = 0;
-      wallSeenCount = 0;
+      emergencyStop     = false;
+      manualCommand     = ' ';
+      noLineCount       = 0;
+      wallSeenCount     = 0;
+      lastTurnDirection = 0;
       mode    = 'l';
       lastLED = 'l';
       break;

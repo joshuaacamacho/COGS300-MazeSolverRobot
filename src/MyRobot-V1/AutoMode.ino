@@ -45,12 +45,42 @@ void lineFollow() {
 
   // Perfectly centered — drive straight
   if (center == 0 && left == 1 && right == 1) {
+    lastTurnDirection = 0;
     drive(DRIVE_SPEED);
   }
 
+  // T intersection — all on tape → turn right
+  // left motor drives, right motor stops until only center on tape
+  else if (left == 0 && center == 0 && right == 0) {
+    Serial.println("T intersection — turning right");
+    noLineCount = 0;
+
+    while (true) {
+      if (Serial.available() > 0) {
+        char c = Serial.read();
+        processCommand(c);
+        if (emergencyStop) return;
+      }
+      left   = digitalRead(IR_LEFT);
+      center = digitalRead(IR_CENTER);
+      right  = digitalRead(IR_RIGHT);
+      // stop pivoting when only center is on tape
+      if (center == 0 && left == 1 && right == 1) break;
+      digitalWrite(in1, LOW);
+      digitalWrite(in2, LOW);
+      analogWrite(enA, 0);                        // right motor stopped
+      digitalWrite(in3, HIGH);
+      digitalWrite(in4, LOW);
+      analogWrite(enB, DRIVE_SPEED * LEFT_SCALE); // left motor drives
+    }
+    stopMotors();
+    delay(100);
+    lastTurnDirection = 1;
+  }
+
   // Minor drift left (center + right on tape) — turn RIGHT
-  // R:0 means robot drifted left, right sensor now on tape, turn right to correct
   else if (center == 0 && right == 0 && left == 1) {
+    lastTurnDirection = 1;
     noLineCount = 0;
     Serial.println("Minor drift left — right pivot");
 
@@ -64,18 +94,18 @@ void lineFollow() {
       if (right == 1) break;
       digitalWrite(in1, LOW);
       digitalWrite(in2, LOW);
-      analogWrite(enA, 0);                        // right motor stopped
+      analogWrite(enA, 0);
       digitalWrite(in3, HIGH);
       digitalWrite(in4, LOW);
-      analogWrite(enB, DRIVE_SPEED * LEFT_SCALE); // left motor drives
+      analogWrite(enB, DRIVE_SPEED * LEFT_SCALE);
     }
     stopMotors();
     delay(50);
   }
 
   // Minor drift right (center + left on tape) — turn LEFT
-  // L:0 means robot drifted right, left sensor now on tape, turn left to correct
   else if (center == 0 && left == 0 && right == 1) {
+    lastTurnDirection = -1;
     noLineCount = 0;
     Serial.println("Minor drift right — left pivot");
 
@@ -89,18 +119,18 @@ void lineFollow() {
       if (left == 1) break;
       digitalWrite(in1, LOW);
       digitalWrite(in2, HIGH);
-      analogWrite(enA, DRIVE_SPEED);              // right motor drives
+      analogWrite(enA, DRIVE_SPEED);
       digitalWrite(in3, LOW);
       digitalWrite(in4, LOW);
-      analogWrite(enB, 0);                        // left motor stopped
+      analogWrite(enB, 0);
     }
     stopMotors();
     delay(50);
   }
 
-  // Major drift left (only right on tape, center gone) — turn RIGHT hard
-  // R:0 C:1 means robot drifted far left, turn right hard to recover
+  // Major drift left (only right on tape) — turn RIGHT hard
   else if (center == 1 && right == 0 && left == 1) {
+    lastTurnDirection = 1;
     noLineCount = 0;
     Serial.println("Major drift left — hard right pivot");
 
@@ -114,18 +144,18 @@ void lineFollow() {
       if (center == 0) break;
       digitalWrite(in1, LOW);
       digitalWrite(in2, LOW);
-      analogWrite(enA, 0);                        // right motor stopped
+      analogWrite(enA, 0);
       digitalWrite(in3, HIGH);
       digitalWrite(in4, LOW);
-      analogWrite(enB, DRIVE_SPEED * LEFT_SCALE); // left motor drives
+      analogWrite(enB, DRIVE_SPEED * LEFT_SCALE);
     }
     stopMotors();
     delay(100);
   }
 
-  // Major drift right (only left on tape, center gone) — turn LEFT hard
-  // L:0 C:1 means robot drifted far right, turn left hard to recover
+  // Major drift right (only left on tape) — turn LEFT hard
   else if (center == 1 && left == 0 && right == 1) {
+    lastTurnDirection = -1;
     noLineCount = 0;
     Serial.println("Major drift right — hard left pivot");
 
@@ -139,18 +169,58 @@ void lineFollow() {
       if (center == 0) break;
       digitalWrite(in1, LOW);
       digitalWrite(in2, HIGH);
-      analogWrite(enA, DRIVE_SPEED);              // right motor drives
+      analogWrite(enA, DRIVE_SPEED);
       digitalWrite(in3, LOW);
       digitalWrite(in4, LOW);
-      analogWrite(enB, 0);                        // left motor stopped
+      analogWrite(enB, 0);
     }
     stopMotors();
     delay(100);
   }
 
-  // Lost line completely — stop
+  // Lost line (all 1s) — drive straight briefly then pivot in last known direction
   else {
-    stopMotors();
+    Serial.println("Lost line — driving straight to search");
+    drive(DRIVE_SPEED);
+    delay(300);
+
+    // Check if we found the line
+    left   = digitalRead(IR_LEFT);
+    center = digitalRead(IR_CENTER);
+    right  = digitalRead(IR_RIGHT);
+
+    if (left == 1 && center == 1 && right == 1) {
+      // Still lost — pivot in last known direction
+      stopMotors();
+      delay(50);
+
+      if (lastTurnDirection == 1) {
+        Serial.println("Still lost — pivoting right");
+        digitalWrite(in1, LOW);
+        digitalWrite(in2, LOW);
+        analogWrite(enA, 0);
+        digitalWrite(in3, HIGH);
+        digitalWrite(in4, LOW);
+        analogWrite(enB, DRIVE_SPEED * LEFT_SCALE);
+        delay(200);
+      }
+      else if (lastTurnDirection == -1) {
+        Serial.println("Still lost — pivoting left");
+        digitalWrite(in1, LOW);
+        digitalWrite(in2, HIGH);
+        analogWrite(enA, DRIVE_SPEED);
+        digitalWrite(in3, LOW);
+        digitalWrite(in4, LOW);
+        analogWrite(enB, 0);
+        delay(200);
+      }
+      else {
+        // No direction history — keep driving straight
+        drive(DRIVE_SPEED);
+        delay(200);
+      }
+      stopMotors();
+    }
   }
 }
 
