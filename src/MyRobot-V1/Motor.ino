@@ -41,7 +41,6 @@ void stopMotors() {
 
 
 // ===== TURN LEFT =====
-// Left motor reverse, right motor forward
 void turnLeft() {
 
   digitalWrite(in1, LOW);
@@ -55,7 +54,6 @@ void turnLeft() {
 
 
 // ===== TURN RIGHT =====
-// Right motor reverse, left motor forward
 void turnRight() {
 
   digitalWrite(in1, HIGH);

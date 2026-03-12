@@ -6,40 +6,35 @@ void processCommand(char cmd) {
 
     case 'w':
       emergencyStop = false;
+      manualCommand = 'w';
       mode    = 'm';
       lastLED = 'm';
-      drive(DRIVE_SPEED);
       break;
 
     case 's':
       emergencyStop = false;
+      manualCommand = 's';
       mode    = 'm';
       lastLED = 'm';
-      digitalWrite(in1, HIGH);
-      digitalWrite(in2, LOW);
-      digitalWrite(in3, LOW);
-      digitalWrite(in4, HIGH);
-      analogWrite(enA, DRIVE_SPEED);
-      analogWrite(enB, DRIVE_SPEED * LEFT_SCALE);
       break;
 
     case 'a':
       emergencyStop = false;
+      manualCommand = 'a';
       mode    = 'm';
       lastLED = 'm';
-      turnLeft();
       break;
 
     case 'd':
       emergencyStop = false;
+      manualCommand = 'd';
       mode    = 'm';
       lastLED = 'm';
-      turnRight();
       break;
 
     case ' ':
-      // Emergency stop — keeps LED on last active mode
       emergencyStop = true;
+      manualCommand = ' ';
       stopMotors();
       objectLocked = false;
       Serial.println("STOP — motors stopped, LED preserved");
@@ -47,6 +42,7 @@ void processCommand(char cmd) {
 
     case 'l':
       emergencyStop = false;
+      manualCommand = ' ';
       noLineCount   = 0;
       wallSeenCount = 0;
       mode    = 'l';
@@ -55,7 +51,8 @@ void processCommand(char cmd) {
 
     case 'f':
       emergencyStop = false;
-      noWallCount = 0;
+      manualCommand = ' ';
+      noWallCount   = 0;
       stopMotors();
       delay(500);
       mode    = 'f';
@@ -64,6 +61,7 @@ void processCommand(char cmd) {
 
     case 'o':
       emergencyStop      = false;
+      manualCommand      = ' ';
       objectLocked       = false;
       currentFacingSteps = 0;
       for (int i = 0; i < NUM_ANGLES; i++)

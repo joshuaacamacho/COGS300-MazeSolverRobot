@@ -1,7 +1,6 @@
 // ===== LINE FOLLOW =====
 void lineFollow() {
 
-  // Check serial during line follow so space works
   if (Serial.available() > 0) {
     char cmd = Serial.read();
     processCommand(cmd);
@@ -42,17 +41,114 @@ void lineFollow() {
   }
 
   // ===== LINE FOLLOW LOGIC =====
+  // 0 = on tape, 1 = off tape
+
+  // Perfectly centered — drive straight
   if (center == 0 && left == 1 && right == 1) {
     drive(DRIVE_SPEED);
   }
-  else if (left == 0 && center == 0 && right == 1) {
-    turnLeft();
+
+  // Minor drift left (center + right on tape) — turn RIGHT
+  // R:0 means robot drifted left, right sensor now on tape, turn right to correct
+  else if (center == 0 && right == 0 && left == 1) {
+    noLineCount = 0;
+    Serial.println("Minor drift left — right pivot");
+
+    while (true) {
+      if (Serial.available() > 0) {
+        char c = Serial.read();
+        processCommand(c);
+        if (emergencyStop) return;
+      }
+      right = digitalRead(IR_RIGHT);
+      if (right == 1) break;
+      digitalWrite(in1, LOW);
+      digitalWrite(in2, LOW);
+      analogWrite(enA, 0);                        // right motor stopped
+      digitalWrite(in3, HIGH);
+      digitalWrite(in4, LOW);
+      analogWrite(enB, DRIVE_SPEED * LEFT_SCALE); // left motor drives
+    }
+    stopMotors();
     delay(50);
   }
-  else if (right == 0 && center == 0 && left == 1) {
-    turnRight();
+
+  // Minor drift right (center + left on tape) — turn LEFT
+  // L:0 means robot drifted right, left sensor now on tape, turn left to correct
+  else if (center == 0 && left == 0 && right == 1) {
+    noLineCount = 0;
+    Serial.println("Minor drift right — left pivot");
+
+    while (true) {
+      if (Serial.available() > 0) {
+        char c = Serial.read();
+        processCommand(c);
+        if (emergencyStop) return;
+      }
+      left = digitalRead(IR_LEFT);
+      if (left == 1) break;
+      digitalWrite(in1, LOW);
+      digitalWrite(in2, HIGH);
+      analogWrite(enA, DRIVE_SPEED);              // right motor drives
+      digitalWrite(in3, LOW);
+      digitalWrite(in4, LOW);
+      analogWrite(enB, 0);                        // left motor stopped
+    }
+    stopMotors();
     delay(50);
   }
+
+  // Major drift left (only right on tape, center gone) — turn RIGHT hard
+  // R:0 C:1 means robot drifted far left, turn right hard to recover
+  else if (center == 1 && right == 0 && left == 1) {
+    noLineCount = 0;
+    Serial.println("Major drift left — hard right pivot");
+
+    while (true) {
+      if (Serial.available() > 0) {
+        char c = Serial.read();
+        processCommand(c);
+        if (emergencyStop) return;
+      }
+      center = digitalRead(IR_CENTER);
+      if (center == 0) break;
+      digitalWrite(in1, LOW);
+      digitalWrite(in2, LOW);
+      analogWrite(enA, 0);                        // right motor stopped
+      digitalWrite(in3, HIGH);
+      digitalWrite(in4, LOW);
+      analogWrite(enB, DRIVE_SPEED * LEFT_SCALE); // left motor drives
+    }
+    stopMotors();
+    delay(100);
+  }
+
+  // Major drift right (only left on tape, center gone) — turn LEFT hard
+  // L:0 C:1 means robot drifted far right, turn left hard to recover
+  else if (center == 1 && left == 0 && right == 1) {
+    noLineCount = 0;
+    Serial.println("Major drift right — hard left pivot");
+
+    while (true) {
+      if (Serial.available() > 0) {
+        char c = Serial.read();
+        processCommand(c);
+        if (emergencyStop) return;
+      }
+      center = digitalRead(IR_CENTER);
+      if (center == 0) break;
+      digitalWrite(in1, LOW);
+      digitalWrite(in2, HIGH);
+      analogWrite(enA, DRIVE_SPEED);              // right motor drives
+      digitalWrite(in3, LOW);
+      digitalWrite(in4, LOW);
+      analogWrite(enB, 0);                        // left motor stopped
+    }
+    stopMotors();
+    delay(100);
+  }
+
+  // Lost line completely — stop
   else {
     stopMotors();
   }
@@ -62,7 +158,6 @@ void lineFollow() {
 // ===== RIGHT WALL FOLLOW =====
 void rightWallFollow() {
 
-  // Check serial so space works
   if (Serial.available() > 0) {
     char cmd = Serial.read();
     processCommand(cmd);
@@ -98,13 +193,11 @@ void rightWallFollow() {
   }
 
   // ===== OBSTACLE AHEAD =====
-  // Front wall detected — stop and turn left in place until clear
   if (frontDist > 0 && frontDist < frontStopDist) {
     Serial.println("Front obstacle — turning left");
     stopMotors();
     delay(100);
 
-    // Turn left in place until front is clear
     while (true) {
       if (Serial.available() > 0) {
         char cmd = Serial.read();
@@ -115,7 +208,6 @@ void rightWallFollow() {
       frontDist = getDistance(TRIG_FRONT, ECHO_FRONT);
       if (frontDist <= 0 || frontDist > frontStopDist) break;
 
-      // Left turn in place
       digitalWrite(in1, LOW);
       digitalWrite(in2, HIGH);
       analogWrite(enA, TURN_SPEED);
@@ -131,22 +223,16 @@ void rightWallFollow() {
   }
 
   // ===== WALL FOLLOW PID =====
-  // No valid right reading — just drive straight
   if (rightDist <= 0) {
     drive(currentSpeed);
     return;
   }
 
-  float error      = rightDist - targetDistance; // positive = too far, negative = too close
-  float correction = error * kp;
+  float error      = rightDist - targetDistance;
+  float correction = constrain(error * kp, -40, 40);
 
-  // Clamp correction to avoid spinning
-  correction = constrain(correction, -40, 40);
-
-  // Too far from wall — steer right (slow left motor, speed up right)
-  // Too close to wall — steer left (slow right motor, speed up left)
-  int rightSpeed = constrain((int)(currentSpeed - correction), 60, 200);
-  int leftSpeed  = constrain((int)(currentSpeed + correction), 60, 200);
+  int rightSpeed = constrain((int)(currentSpeed - correction), 70, 200);
+  int leftSpeed  = constrain((int)(currentSpeed + correction), 70, 200);
 
   Serial.print("Error: "); Serial.print(error);
   Serial.print("  Correction: "); Serial.print(correction);
@@ -166,7 +252,6 @@ void rightWallFollow() {
 // ===== OBJECT DETECTION =====
 void runObjectDetection() {
 
-  // Check serial during object detection so space works
   if (Serial.available() > 0) {
     char cmd = Serial.read();
     processCommand(cmd);

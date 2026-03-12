@@ -26,9 +26,9 @@ const int LED_WALL   = 6;
 const int LED_OBJECT = A0;
 
 // ===== SPEED SETTINGS =====
-const int DRIVE_SPEED  = 110;
+const int DRIVE_SPEED  = 70;
 const int TURN_SPEED   = 110;
-const float LEFT_SCALE = 0.78;
+const float LEFT_SCALE = 0.95;
 
 // ===== WALL FOLLOW SETTINGS =====
 const float kp             = 0.8;
@@ -45,7 +45,8 @@ int sweepTurnDelay = 144;
 // ===== GLOBAL STATE =====
 bool objectLocked       = false;
 int  currentFacingSteps = 0;
-bool emergencyStop      = false; // new stop flag
+bool emergencyStop      = false;
+char manualCommand      = ' ';
 
 // ===== TRANSITION COUNTERS =====
 int noLineCount   = 0;
@@ -54,7 +55,7 @@ int noWallCount   = 0;
 
 // ===== MODE =====
 char mode    = 'm';
-char lastLED = 'm'; // tracks last mode for LED display
+char lastLED = 'm';
 
 
 // ===== FUNCTION DECLARATIONS =====
@@ -117,13 +118,11 @@ void setup() {
 // ===== MAIN LOOP =====
 void loop() {
 
-  // Always check serial first
   if (Serial.available() > 0) {
     char cmd = Serial.read();
     processCommand(cmd);
   }
 
-  // Emergency stop overrides everything
   if (emergencyStop) {
     stopMotors();
     updateModeLEDs();
@@ -131,7 +130,25 @@ void loop() {
   }
 
   switch (mode) {
-    case 'm': break;
+    case 'm':
+      if (manualCommand == 'w') {
+        drive(DRIVE_SPEED);
+      }
+      else if (manualCommand == 's') {
+        digitalWrite(in1, HIGH);
+        digitalWrite(in2, LOW);
+        digitalWrite(in3, LOW);
+        digitalWrite(in4, HIGH);
+        analogWrite(enA, DRIVE_SPEED);
+        analogWrite(enB, DRIVE_SPEED * LEFT_SCALE);
+      }
+      else if (manualCommand == 'a') {
+        turnLeft();
+      }
+      else if (manualCommand == 'd') {
+        turnRight();
+      }
+      break;
     case 'l': lineFollow();         break;
     case 'f': rightWallFollow();    break;
     case 'o': runObjectDetection(); break;
@@ -143,8 +160,6 @@ void loop() {
 
 // ===== UPDATE MODE LEDS =====
 void updateModeLEDs() {
-
-  // LEDs show lastLED not mode — so space keeps LED on
   digitalWrite(LED_LINE,   lastLED == 'l' ? HIGH : LOW);
   digitalWrite(LED_WALL,   lastLED == 'f' ? HIGH : LOW);
   digitalWrite(LED_OBJECT, lastLED == 'o' ? HIGH : LOW);
