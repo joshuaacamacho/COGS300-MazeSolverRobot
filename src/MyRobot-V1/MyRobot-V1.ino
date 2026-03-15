@@ -43,11 +43,13 @@ float belief[NUM_ANGLES];
 int sweepTurnDelay = 144;
 
 // ===== GLOBAL STATE =====
-bool objectLocked       = false;
-int  currentFacingSteps = 0;
-bool emergencyStop      = false;
-char manualCommand      = ' ';
-int  lastTurnDirection  = 0;
+bool objectLocked        = false;
+int  currentFacingSteps  = 0;
+bool emergencyStop       = false;
+char manualCommand       = ' ';
+int  lastTurnDirection   = 0;
+bool approachingLeftTurn  = false;
+bool approachingRightTurn = false;
 
 // ===== TRANSITION COUNTERS =====
 int noLineCount   = 0;
