@@ -26,7 +26,8 @@ const int LED_WALL   = 6;
 const int LED_OBJECT = A0;
 
 // ===== SPEED SETTINGS =====
-const int DRIVE_SPEED  = 70;
+const int DRIVE_SPEED  = 55;
+const int PIVOT_SPEED  = 70;
 const int TURN_SPEED   = 110;
 const float LEFT_SCALE = 0.95;
 

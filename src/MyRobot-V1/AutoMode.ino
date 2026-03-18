@@ -16,73 +16,51 @@ void lineFollow() {
   Serial.print(" R:"); Serial.println(right);
 
   // ===== TRANSITION: line ended + wall detected on right =====
-  float rightDist = getDistance(TRIG_RIGHT, ECHO_RIGHT);
-  bool lineGone   = (left == 1 && center == 1 && right == 1);
-  bool wallSeen   = (rightDist > 0 && rightDist < 50.0);
+  static int ultrasonicCounter = 0;
+  ultrasonicCounter++;
+  if (ultrasonicCounter >= 10) {
+    ultrasonicCounter = 0;
+    float rightDist = getDistance(TRIG_RIGHT, ECHO_RIGHT);
+    bool lineGone   = (left == 1 && center == 1 && right == 1);
+    bool wallSeen   = (rightDist > 0 && rightDist < 50.0);
 
-  if (lineGone && wallSeen) {
-    noLineCount++;
-    wallSeenCount++;
-  } else {
-    noLineCount   = 0;
-    wallSeenCount = 0;
-  }
+    if (lineGone && wallSeen) {
+      noLineCount++;
+      wallSeenCount++;
+    } else {
+      noLineCount   = 0;
+      wallSeenCount = 0;
+    }
 
-  if (noLineCount >= 5 && wallSeenCount >= 5) {
-    Serial.println("Line ended + wall detected — switching to wall follow");
-    noLineCount   = 0;
-    wallSeenCount = 0;
-    noWallCount   = 0;
-    stopMotors();
-    delay(500);
-    mode    = 'f';
-    lastLED = 'f';
-    return;
+    if (noLineCount >= 5 && wallSeenCount >= 5) {
+      Serial.println("Line ended + wall detected — switching to wall follow");
+      noLineCount   = 0;
+      wallSeenCount = 0;
+      noWallCount   = 0;
+      stopMotors();
+      delay(500);
+      mode    = 'f';
+      lastLED = 'f';
+      return;
+    }
   }
 
   // ===== LINE FOLLOW LOGIC =====
   // 0 = on tape, 1 = off tape
 
-  // Perfectly centered — drive straight, flags persist
+  // Perfectly centered — drive straight, reset flags
   if (center == 0 && left == 1 && right == 1) {
-    lastTurnDirection = 0;
-    drive(DRIVE_SPEED);
-  }
-
-  // T intersection — all on tape → turn right
-  else if (left == 0 && center == 0 && right == 0) {
+    lastTurnDirection    = 0;
     approachingLeftTurn  = false;
     approachingRightTurn = false;
-    Serial.println("T intersection — turning right");
-    noLineCount = 0;
-
-    while (true) {
-      if (Serial.available() > 0) {
-        char c = Serial.read();
-        processCommand(c);
-        if (emergencyStop) return;
-      }
-      left   = digitalRead(IR_LEFT);
-      center = digitalRead(IR_CENTER);
-      right  = digitalRead(IR_RIGHT);
-      if (center == 0 && left == 1 && right == 1) break;
-      digitalWrite(in1, LOW);
-      digitalWrite(in2, LOW);
-      analogWrite(enA, 0);
-      digitalWrite(in3, HIGH);
-      digitalWrite(in4, LOW);
-      analogWrite(enB, DRIVE_SPEED * LEFT_SCALE);
-    }
-    stopMotors();
-    delay(100);
-    lastTurnDirection = 1;
+    drive(DRIVE_SPEED);
   }
 
   // Minor drift left (center + right on tape) — turn RIGHT
   else if (center == 0 && right == 0 && left == 1) {
     lastTurnDirection    = 1;
     approachingRightTurn = true;
-    approachingLeftTurn  = false; // opposite clears other flag
+    approachingLeftTurn  = false;
     noLineCount = 0;
     Serial.println("Minor drift left — right pivot");
 
@@ -99,7 +77,7 @@ void lineFollow() {
       analogWrite(enA, 0);
       digitalWrite(in3, HIGH);
       digitalWrite(in4, LOW);
-      analogWrite(enB, DRIVE_SPEED * LEFT_SCALE);
+      analogWrite(enB, PIVOT_SPEED);
     }
     stopMotors();
     delay(50);
@@ -109,7 +87,7 @@ void lineFollow() {
   else if (center == 0 && left == 0 && right == 1) {
     lastTurnDirection    = -1;
     approachingLeftTurn  = true;
-    approachingRightTurn = false; // opposite clears other flag
+    approachingRightTurn = false;
     noLineCount = 0;
     Serial.println("Minor drift right — left pivot");
 
@@ -123,7 +101,7 @@ void lineFollow() {
       if (left == 1) break;
       digitalWrite(in1, LOW);
       digitalWrite(in2, HIGH);
-      analogWrite(enA, DRIVE_SPEED);
+      analogWrite(enA, PIVOT_SPEED);
       digitalWrite(in3, LOW);
       digitalWrite(in4, LOW);
       analogWrite(enB, 0);
@@ -153,7 +131,7 @@ void lineFollow() {
       analogWrite(enA, 0);
       digitalWrite(in3, HIGH);
       digitalWrite(in4, LOW);
-      analogWrite(enB, DRIVE_SPEED * LEFT_SCALE);
+      analogWrite(enB, PIVOT_SPEED);
     }
     stopMotors();
     delay(100);
@@ -177,7 +155,7 @@ void lineFollow() {
       if (center == 0) break;
       digitalWrite(in1, LOW);
       digitalWrite(in2, HIGH);
-      analogWrite(enA, DRIVE_SPEED);
+      analogWrite(enA, PIVOT_SPEED);
       digitalWrite(in3, LOW);
       digitalWrite(in4, LOW);
       analogWrite(enB, 0);
@@ -186,30 +164,96 @@ void lineFollow() {
     delay(100);
   }
 
-  // Lost line — use approach flags for direction
+  // Lost line — use flags for direction
   else {
     if (approachingLeftTurn) {
-      Serial.println("Lost line — aggressive left pivot");
-      approachingLeftTurn = false;
+      // Drive forward briefly to see if right sensor catches junction tape
+      Serial.println("Lost line — forward burst to check for junction");
+      unsigned long burstStart = millis();
+      bool rightFound = false;
 
-      while (true) {
+      while (millis() - burstStart < 200) {
         if (Serial.available() > 0) {
           char c = Serial.read();
           processCommand(c);
           if (emergencyStop) return;
         }
-        center = digitalRead(IR_CENTER);
-        if (center == 0) break;
-        digitalWrite(in1, LOW);
-        digitalWrite(in2, HIGH);
-        analogWrite(enA, DRIVE_SPEED);
-        digitalWrite(in3, LOW);
-        digitalWrite(in4, LOW);
-        analogWrite(enB, 0);
+        drive(DRIVE_SPEED);
+        int r = digitalRead(IR_RIGHT);
+        if (r == 0) { rightFound = true; break; }
       }
+
       stopMotors();
-      delay(100);
-      lastTurnDirection = -1;
+      delay(50);
+
+      if (rightFound) {
+        // Junction detected — override to right pivot
+        Serial.println("Junction detected — overriding to right pivot");
+        approachingLeftTurn  = false;
+        approachingRightTurn = false;
+
+        while (true) {
+          if (Serial.available() > 0) {
+            char c = Serial.read();
+            processCommand(c);
+            if (emergencyStop) return;
+          }
+          center = digitalRead(IR_CENTER);
+          if (center == 0) break;
+          digitalWrite(in1, LOW);
+          digitalWrite(in2, LOW);
+          analogWrite(enA, 0);
+          digitalWrite(in3, HIGH);
+          digitalWrite(in4, LOW);
+          analogWrite(enB, PIVOT_SPEED);
+        }
+        stopMotors();
+        delay(100);
+        lastTurnDirection = 1;
+      }
+      else {
+        // No junction — overshot, reverse then pivot left
+        Serial.println("Not a junction — reversing then left pivot");
+        approachingLeftTurn = false;
+
+        // Reverse briefly to get back to turn
+        unsigned long revStart = millis();
+        while (millis() - revStart < 200) {
+          if (Serial.available() > 0) {
+            char c = Serial.read();
+            processCommand(c);
+            if (emergencyStop) return;
+          }
+          digitalWrite(in1, HIGH);
+          digitalWrite(in2, LOW);
+          analogWrite(enA, DRIVE_SPEED);
+          digitalWrite(in3, LOW);
+          digitalWrite(in4, HIGH);
+          analogWrite(enB, DRIVE_SPEED * LEFT_SCALE);
+        }
+        stopMotors();
+        delay(50);
+
+        // Pivot left until center finds tape
+        while (true) {
+          if (Serial.available() > 0) {
+            char c = Serial.read();
+            processCommand(c);
+            if (emergencyStop) return;
+          }
+          center = digitalRead(IR_CENTER);
+          if (center == 0) break;
+          digitalWrite(in1, LOW);
+          digitalWrite(in2, HIGH);
+          analogWrite(enA, PIVOT_SPEED);
+          digitalWrite(in3, LOW);
+          digitalWrite(in4, LOW);
+          analogWrite(enB, 0);
+        }
+        stopMotors();
+        delay(100);
+        lastTurnDirection = -1;
+      }
     }
 
     else if (approachingRightTurn) {
@@ -229,7 +273,7 @@ void lineFollow() {
         analogWrite(enA, 0);
         digitalWrite(in3, HIGH);
         digitalWrite(in4, LOW);
-        analogWrite(enB, DRIVE_SPEED * LEFT_SCALE);
+        analogWrite(enB, PIVOT_SPEED);
       }
       stopMotors();
       delay(100);

@@ -13,109 +13,79 @@ extern int sweepTurnDelay;
 extern bool objectLocked;
 extern const int TRIG_FRONT;
 extern const int ECHO_FRONT;
+extern const int PIVOT_SPEED;
 
 float getDistance(int trigPin, int echoPin);
 
-
-// ===== BASIC DRIVE =====
 void drive(int speed) {
-
   digitalWrite(in1, LOW);
   digitalWrite(in2, HIGH);
   analogWrite(enA, speed);
-
   digitalWrite(in3, HIGH);
   digitalWrite(in4, LOW);
   analogWrite(enB, speed * LEFT_SCALE);
 }
 
-
-// ===== STOP =====
 void stopMotors() {
-
   digitalWrite(in1, LOW);  digitalWrite(in2, LOW);
   digitalWrite(in3, LOW);  digitalWrite(in4, LOW);
   analogWrite(enA, 0);
   analogWrite(enB, 0);
 }
 
-
-// ===== TURN LEFT =====
 void turnLeft() {
-
   digitalWrite(in1, LOW);
   digitalWrite(in2, HIGH);
   analogWrite(enA, TURN_SPEED);
-
   digitalWrite(in3, LOW);
   digitalWrite(in4, HIGH);
   analogWrite(enB, TURN_SPEED * LEFT_SCALE);
 }
 
-
-// ===== TURN RIGHT =====
 void turnRight() {
-
   digitalWrite(in1, HIGH);
   digitalWrite(in2, LOW);
   analogWrite(enA, TURN_SPEED);
-
   digitalWrite(in3, HIGH);
   digitalWrite(in4, LOW);
   analogWrite(enB, TURN_SPEED * LEFT_SCALE);
 }
 
-
-// ===== ROTATE LEFT STEPS =====
 void rotateLeftSteps(int steps) {
-
   for (int i = 0; i < steps; i++) {
-
     digitalWrite(in1, LOW);
     digitalWrite(in2, HIGH);
     analogWrite(enA, TURN_SPEED);
-
     digitalWrite(in3, LOW);
     digitalWrite(in4, HIGH);
     analogWrite(enB, TURN_SPEED * LEFT_SCALE);
-
     delay(sweepTurnDelay);
     stopMotors();
     delay(150);
   }
 }
 
-
-// ===== ROTATE RIGHT STEPS =====
 void rotateRightSteps(int steps) {
-
   for (int i = 0; i < steps; i++) {
-
     digitalWrite(in1, HIGH);
     digitalWrite(in2, LOW);
     analogWrite(enA, TURN_SPEED);
-
     digitalWrite(in3, HIGH);
     digitalWrite(in4, LOW);
     analogWrite(enB, TURN_SPEED * LEFT_SCALE);
-
     delay(sweepTurnDelay);
     stopMotors();
     delay(150);
   }
 }
 
-
-// ===== DRIVE FORWARD STEP =====
 void driveForwardStep() {
-
   int lostCount = 0;
   const int LOST_THRESHOLD = 30;
   unsigned long startTime = millis();
   const unsigned long MAX_DRIVE_MS = 3000;
 
   while (true) {
-
     if (millis() - startTime > MAX_DRIVE_MS) {
       Serial.println("Drive timeout — rescanning");
       stopMotors();
