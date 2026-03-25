@@ -288,6 +288,28 @@ void lineFollow() {
 }
 
 
+// ===== FILTERED RIGHT DISTANCE =====
+float getFilteredRight() {
+  const int N = 5;
+  static float readings[N] = {25, 25, 25, 25, 25};
+  static float lastGood = 25.0;
+  static int idx = 0;
+
+  float d = getStableDistance(TRIG_RIGHT, ECHO_RIGHT);
+
+  if (d <= 0 || d > 150 || abs(d - lastGood) > 25.0) {
+    return lastGood;
+  }
+
+  lastGood = d;
+  readings[idx] = d;
+  idx = (idx + 1) % N;
+
+  float sum = 0;
+  for (int i = 0; i < N; i++) sum += readings[i];
+  return sum / N;
+}
+
 // ===== RIGHT WALL FOLLOW =====
 void rightWallFollow() {
 
@@ -297,14 +319,14 @@ void rightWallFollow() {
     if (emergencyStop) return;
   }
 
-  float frontDist = getDistance(TRIG_FRONT, ECHO_FRONT);
-  float rightDist = getDistance(TRIG_RIGHT, ECHO_RIGHT);
+  float frontDist = getStableDistance(TRIG_FRONT, ECHO_FRONT);
+  float rightDist = getFilteredRight();
 
   Serial.print("Front: "); Serial.print(frontDist);
   Serial.print("  Right: "); Serial.println(rightDist);
 
   // ===== TRANSITION: wall ended → object detection =====
-  if (rightDist <= 0 || rightDist > 50.0) {
+  if (rightDist <= 0 || rightDist > 60.0) {
     noWallCount++;
     Serial.print("No wall count: "); Serial.println(noWallCount);
   } else {
@@ -325,9 +347,9 @@ void rightWallFollow() {
     return;
   }
 
-  // ===== OBSTACLE AHEAD =====
-  if (frontDist > 0 && frontDist < frontStopDist) {
-    Serial.println("Front obstacle — turning left");
+  // ===== FRONT WALL + RIGHT WALL CLOSE = LEFT TURN =====
+  if (frontDist > 0 && frontDist < 20.0 && rightDist > 0 && rightDist < 30.0) {
+    Serial.println("Front wall + right wall close — turning left until clear");
     stopMotors();
     delay(100);
 
@@ -338,15 +360,15 @@ void rightWallFollow() {
         if (emergencyStop) return;
       }
 
-      frontDist = getDistance(TRIG_FRONT, ECHO_FRONT);
-      if (frontDist <= 0 || frontDist > frontStopDist) break;
+      frontDist = getStableDistance(TRIG_FRONT, ECHO_FRONT);
+      if (frontDist <= 0 || frontDist > 20.0) break;
 
       digitalWrite(in1, LOW);
       digitalWrite(in2, HIGH);
-      analogWrite(enA, TURN_SPEED);
+      analogWrite(enA, PIVOT_SPEED);
       digitalWrite(in3, LOW);
       digitalWrite(in4, HIGH);
-      analogWrite(enB, TURN_SPEED * LEFT_SCALE);
+      analogWrite(enB, max((int)(PIVOT_SPEED * LEFT_SCALE), 65));
       delay(50);
     }
 
@@ -355,30 +377,74 @@ void rightWallFollow() {
     return;
   }
 
-  // ===== WALL FOLLOW PID =====
-  if (rightDist <= 0) {
-    drive(currentSpeed);
+  // ===== RIGHT WALL LOST — dual motor turn right hard =====
+  if (rightDist <= 0 || rightDist > 60.0) {
+    Serial.println("Right wall lost — turning right hard");
+    digitalWrite(in1, HIGH);
+    digitalWrite(in2, LOW);
+    analogWrite(enA, PIVOT_SPEED);
+    digitalWrite(in3, HIGH);
+    digitalWrite(in4, LOW);
+    analogWrite(enB, max((int)(PIVOT_SPEED * LEFT_SCALE), 65));
     return;
   }
 
-  float error      = rightDist - targetDistance;
-  float correction = constrain(error * kp, -40, 40);
+  // ===== BAND: 40-60cm — single left motor, hard right correction =====
+  if (rightDist > 40.0) {
+    Serial.println("Band: 40-60cm — hard right correction");
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, LOW);
+    analogWrite(enA, 0);
+    digitalWrite(in3, HIGH);
+    digitalWrite(in4, LOW);
+    analogWrite(enB, max((int)(65 * LEFT_SCALE), 65));
+    return;
+  }
 
-  int rightSpeed = constrain((int)(currentSpeed - correction), 70, 200);
-  int leftSpeed  = constrain((int)(currentSpeed + correction), 70, 200);
+  // ===== BAND: 30-40cm — moderate right correction =====
+  if (rightDist > 30.0) {
+    Serial.println("Band: 30-40cm — moderate right correction");
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, HIGH);
+    analogWrite(enA, 65);
+    digitalWrite(in3, HIGH);
+    digitalWrite(in4, LOW);
+    analogWrite(enB, max((int)(85 * LEFT_SCALE), 65));
+    return;
+  }
 
-  Serial.print("Error: "); Serial.print(error);
-  Serial.print("  Correction: "); Serial.print(correction);
-  Serial.print("  R: "); Serial.print(rightSpeed);
-  Serial.print("  L: "); Serial.println(leftSpeed);
+  // ===== BAND: 20-30cm — sweet spot, drive straight =====
+  if (rightDist >= 20.0) {
+    Serial.println("Band: 20-30cm — straight");
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, HIGH);
+    analogWrite(enA, 65);
+    digitalWrite(in3, HIGH);
+    digitalWrite(in4, LOW);
+    analogWrite(enB, max((int)(65 * LEFT_SCALE), 65));
+    return;
+  }
 
+  // ===== BAND: 10-20cm — nudge left =====
+  if (rightDist >= 10.0) {
+    Serial.println("Band: 10-20cm — nudge left");
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, HIGH);
+    analogWrite(enA, 85);
+    digitalWrite(in3, HIGH);
+    digitalWrite(in4, LOW);
+    analogWrite(enB, max((int)(65 * LEFT_SCALE), 65));
+    return;
+  }
+
+  // ===== BAND: <10cm — dual motor pivot left hard =====
+  Serial.println("Band: <10cm — pivot left hard");
   digitalWrite(in1, LOW);
   digitalWrite(in2, HIGH);
-  digitalWrite(in3, HIGH);
-  digitalWrite(in4, LOW);
-
-  analogWrite(enA, rightSpeed);
-  analogWrite(enB, leftSpeed * LEFT_SCALE);
+  analogWrite(enA, PIVOT_SPEED);
+  digitalWrite(in3, LOW);
+  digitalWrite(in4, HIGH);
+  analogWrite(enB, max((int)(PIVOT_SPEED * LEFT_SCALE), 65));
 }
 
 

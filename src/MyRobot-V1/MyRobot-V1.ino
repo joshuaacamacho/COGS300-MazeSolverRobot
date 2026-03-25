@@ -1,3 +1,4 @@
+
 #include <Arduino.h>
 
 // ===== MOTOR PINS =====
@@ -27,7 +28,7 @@ const int LED_OBJECT = A0;
 
 // ===== SPEED SETTINGS =====
 const int DRIVE_SPEED  = 55;
-const int PIVOT_SPEED  = 70;
+const int PIVOT_SPEED  = 55;
 const int TURN_SPEED   = 110;
 const float LEFT_SCALE = 0.95;
 
@@ -35,7 +36,7 @@ const float LEFT_SCALE = 0.95;
 const float kp             = 0.8;
 const float targetDistance = 10.0;
 const float frontStopDist  = 25.0;
-int currentSpeed           = 110;
+int currentSpeed           = 65;
 
 // ===== SWEEP SETTINGS =====
 const int NUM_ANGLES = 12;
@@ -186,4 +187,28 @@ float getDistance(int trigPin, int echoPin) {
   float d = duration * 0.034f / 2.0f;
   if (d < 2) return -1;
   return d;
+}
+
+// ===== STABLE DISTANCE =====
+float getStableDistance(int trigPin, int echoPin) {
+  static unsigned long lastFrontRead = 0;
+  static unsigned long lastRightRead = 0;
+  static float lastFrontDist = -1;
+  static float lastRightDist = -1;
+
+  unsigned long now = millis();
+
+  if (trigPin == TRIG_FRONT) {
+    if (now - lastFrontRead >= 60) {
+      lastFrontRead = now;
+      lastFrontDist = getDistance(trigPin, echoPin);
+    }
+    return lastFrontDist;
+  } else {
+    if (now - lastRightRead >= 60) {
+      lastRightRead = now;
+      lastRightDist = getDistance(trigPin, echoPin);
+    }
+    return lastRightDist;
+  }
 }
