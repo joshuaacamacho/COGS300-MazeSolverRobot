@@ -1,11 +1,38 @@
-// ===== LINE FOLLOW =====
-void lineFollow() {
+// =============================================================================
+// AutoMode.ino
+// Implements all three autonomous modes:
+//   - lineFollow()         : follows a dark tape line using three IR sensors
+//   - rightWallFollow()    : maintains a fixed distance from the right wall
+//   - runObjectDetection() : sweeps, identifies, and drives toward an object
+//
+// Supporting routines for the sweep (sweep180, updateBelief, getBestBeliefIndex)
+// are also defined here.
+// =============================================================================
 
-  if (Serial.available() > 0) {
-    char cmd = Serial.read();
-    processCommand(cmd);
-    if (emergencyStop) return;
-  }
+// Convenience macro — checks for an incoming serial command and processes it.
+// Used inside blocking loops so the robot remains responsive during manoeuvres.
+#define CHECK_CMD() \
+  if (Serial.available() > 0) { processCommand(Serial.read()); if (emergencyStop) return; }
+
+
+// =============================================================================
+// lineFollow
+// Follows a tape line using three IR sensors (left, center, right).
+// 0 = on tape, 1 = off tape.
+//
+// Steering logic mirrors discrete IR states:
+//   center only       — drive straight
+//   center + right    — minor left drift, pivot right until right sensor clears
+//   center + left     — minor right drift, pivot left until left sensor clears
+//   right only        — major left drift, hard pivot right until center reacquires
+//   left only         — major right drift, hard pivot left until center reacquires
+//   all off           — lost line, behaviour depends on last known turn direction
+//
+// Transition: if the line has been gone for 5 consecutive ultrasonic checks
+// and the right wall is visible, the mode switches to wall follow.
+// =============================================================================
+void lineFollow() {
+  CHECK_CMD();
 
   int left   = digitalRead(IR_LEFT);
   int center = digitalRead(IR_CENTER);
@@ -15,450 +42,291 @@ void lineFollow() {
   Serial.print(" C:"); Serial.print(center);
   Serial.print(" R:"); Serial.println(right);
 
-  // ===== TRANSITION: line ended + wall detected on right =====
+  // Check for line-end transition every 10 calls to avoid slowing the control loop
   static int ultrasonicCounter = 0;
-  ultrasonicCounter++;
-  if (ultrasonicCounter >= 10) {
+  if (++ultrasonicCounter >= 10) {
     ultrasonicCounter = 0;
     float rightDist = getDistance(TRIG_RIGHT, ECHO_RIGHT);
-    bool lineGone   = (left == 1 && center == 1 && right == 1);
-    bool wallSeen   = (rightDist > 0 && rightDist < 50.0);
+    bool  lineGone  = (left == 1 && center == 1 && right == 1);
+    bool  wallSeen  = (rightDist > 0 && rightDist < 50.0f);
 
-    if (lineGone && wallSeen) {
-      noLineCount++;
-      wallSeenCount++;
-    } else {
-      noLineCount   = 0;
-      wallSeenCount = 0;
-    }
+    if (lineGone && wallSeen) { noLineCount++; wallSeenCount++; }
+    else                      { noLineCount = 0; wallSeenCount = 0; }
 
     if (noLineCount >= 5 && wallSeenCount >= 5) {
-      Serial.println("Line ended + wall detected — switching to wall follow");
-      noLineCount   = 0;
-      wallSeenCount = 0;
-      noWallCount   = 0;
-      stopMotors();
-      delay(500);
-      mode    = 'f';
-      lastLED = 'f';
+      Serial.println("Line ended — switching to wall follow");
+      noLineCount = wallSeenCount = noWallCount = 0;
+      stopMotors(); delay(500);
+      mode = lastLED = 'f';
       return;
     }
   }
 
-  // ===== LINE FOLLOW LOGIC =====
-  // 0 = on tape, 1 = off tape
-
-  // Perfectly centered — drive straight, reset flags
+  // On line — drive straight
   if (center == 0 && left == 1 && right == 1) {
-    lastTurnDirection    = 0;
-    approachingLeftTurn  = false;
-    approachingRightTurn = false;
+    lastTurnDirection = 0;
+    approachingLeftTurn = approachingRightTurn = false;
     drive(DRIVE_SPEED);
   }
 
-  // Minor drift left (center + right on tape) — turn RIGHT
+  // Minor left drift — pivot right until right sensor clears tape
   else if (center == 0 && right == 0 && left == 1) {
-    lastTurnDirection    = 1;
-    approachingRightTurn = true;
-    approachingLeftTurn  = false;
+    lastTurnDirection = 1; approachingRightTurn = true; approachingLeftTurn = false;
     noLineCount = 0;
-    Serial.println("Minor drift left — right pivot");
-
+    Serial.println("Minor left drift — right pivot");
     while (true) {
-      if (Serial.available() > 0) {
-        char c = Serial.read();
-        processCommand(c);
-        if (emergencyStop) return;
-      }
-      right = digitalRead(IR_RIGHT);
-      if (right == 1) break;
-      digitalWrite(in1, LOW);
-      digitalWrite(in2, LOW);
-      analogWrite(enA, 0);
-      digitalWrite(in3, HIGH);
-      digitalWrite(in4, LOW);
-      analogWrite(enB, PIVOT_SPEED);
+      CHECK_CMD();
+      if (digitalRead(IR_RIGHT) == 1) break;
+      digitalWrite(in1, LOW);  digitalWrite(in2, LOW);  analogWrite(enA, 0);
+      digitalWrite(in3, HIGH); digitalWrite(in4, LOW);  analogWrite(enB, PIVOT_SPEED);
     }
-    stopMotors();
-    delay(50);
+    stopMotors(); delay(50);
   }
 
-  // Minor drift right (center + left on tape) — turn LEFT
+  // Minor right drift — pivot left until left sensor clears tape
   else if (center == 0 && left == 0 && right == 1) {
-    lastTurnDirection    = -1;
-    approachingLeftTurn  = true;
-    approachingRightTurn = false;
+    lastTurnDirection = -1; approachingLeftTurn = true; approachingRightTurn = false;
     noLineCount = 0;
-    Serial.println("Minor drift right — left pivot");
-
+    Serial.println("Minor right drift — left pivot");
     while (true) {
-      if (Serial.available() > 0) {
-        char c = Serial.read();
-        processCommand(c);
-        if (emergencyStop) return;
-      }
-      left = digitalRead(IR_LEFT);
-      if (left == 1) break;
-      digitalWrite(in1, LOW);
-      digitalWrite(in2, HIGH);
-      analogWrite(enA, PIVOT_SPEED);
-      digitalWrite(in3, LOW);
-      digitalWrite(in4, LOW);
-      analogWrite(enB, 0);
+      CHECK_CMD();
+      if (digitalRead(IR_LEFT) == 1) break;
+      digitalWrite(in1, LOW);  digitalWrite(in2, HIGH); analogWrite(enA, PIVOT_SPEED);
+      digitalWrite(in3, LOW);  digitalWrite(in4, LOW);  analogWrite(enB, 0);
     }
-    stopMotors();
-    delay(50);
+    stopMotors(); delay(50);
   }
 
-  // Major drift left (only right on tape) — turn RIGHT hard
+  // Major left drift — hard pivot right until center reacquires tape
   else if (center == 1 && right == 0 && left == 1) {
-    lastTurnDirection    = 1;
-    approachingRightTurn = true;
-    approachingLeftTurn  = false;
+    lastTurnDirection = 1; approachingRightTurn = true; approachingLeftTurn = false;
     noLineCount = 0;
-    Serial.println("Major drift left — hard right pivot");
-
+    Serial.println("Major left drift — hard right pivot");
     while (true) {
-      if (Serial.available() > 0) {
-        char c = Serial.read();
-        processCommand(c);
-        if (emergencyStop) return;
-      }
-      center = digitalRead(IR_CENTER);
-      if (center == 0) break;
-      digitalWrite(in1, LOW);
-      digitalWrite(in2, LOW);
-      analogWrite(enA, 0);
-      digitalWrite(in3, HIGH);
-      digitalWrite(in4, LOW);
-      analogWrite(enB, PIVOT_SPEED);
+      CHECK_CMD();
+      if (digitalRead(IR_CENTER) == 0) break;
+      digitalWrite(in1, LOW);  digitalWrite(in2, LOW);  analogWrite(enA, 0);
+      digitalWrite(in3, HIGH); digitalWrite(in4, LOW);  analogWrite(enB, PIVOT_SPEED);
     }
-    stopMotors();
-    delay(100);
+    stopMotors(); delay(100);
   }
 
-  // Major drift right (only left on tape) — turn LEFT hard
+  // Major right drift — hard pivot left until center reacquires tape
   else if (center == 1 && left == 0 && right == 1) {
-    lastTurnDirection    = -1;
-    approachingLeftTurn  = true;
-    approachingRightTurn = false;
+    lastTurnDirection = -1; approachingLeftTurn = true; approachingRightTurn = false;
     noLineCount = 0;
-    Serial.println("Major drift right — hard left pivot");
-
+    Serial.println("Major right drift — hard left pivot");
     while (true) {
-      if (Serial.available() > 0) {
-        char c = Serial.read();
-        processCommand(c);
-        if (emergencyStop) return;
-      }
-      center = digitalRead(IR_CENTER);
-      if (center == 0) break;
-      digitalWrite(in1, LOW);
-      digitalWrite(in2, HIGH);
-      analogWrite(enA, PIVOT_SPEED);
-      digitalWrite(in3, LOW);
-      digitalWrite(in4, LOW);
-      analogWrite(enB, 0);
+      CHECK_CMD();
+      if (digitalRead(IR_CENTER) == 0) break;
+      digitalWrite(in1, LOW);  digitalWrite(in2, HIGH); analogWrite(enA, PIVOT_SPEED);
+      digitalWrite(in3, LOW);  digitalWrite(in4, LOW);  analogWrite(enB, 0);
     }
-    stopMotors();
-    delay(100);
+    stopMotors(); delay(100);
   }
 
-  // Lost line — use flags for direction
+  // All sensors off — line lost
   else {
     if (approachingLeftTurn) {
-      // Drive forward briefly to see if right sensor catches junction tape
-      Serial.println("Lost line — forward burst to check for junction");
-      unsigned long burstStart = millis();
+      // Burst forward to check whether this is a junction or a genuine left turn
+      Serial.println("Lost line — burst to check junction");
       bool rightFound = false;
-
+      unsigned long burstStart = millis();
       while (millis() - burstStart < 200) {
-        if (Serial.available() > 0) {
-          char c = Serial.read();
-          processCommand(c);
-          if (emergencyStop) return;
-        }
+        CHECK_CMD();
         drive(DRIVE_SPEED);
-        int r = digitalRead(IR_RIGHT);
-        if (r == 0) { rightFound = true; break; }
+        if (digitalRead(IR_RIGHT) == 0) { rightFound = true; break; }
       }
-
-      stopMotors();
-      delay(50);
+      stopMotors(); delay(50);
 
       if (rightFound) {
-        // Junction detected — override to right pivot
-        Serial.println("Junction detected — overriding to right pivot");
-        approachingLeftTurn  = false;
-        approachingRightTurn = false;
-
+        // Junction — override to right pivot
+        Serial.println("Junction — right pivot");
+        approachingLeftTurn = approachingRightTurn = false;
         while (true) {
-          if (Serial.available() > 0) {
-            char c = Serial.read();
-            processCommand(c);
-            if (emergencyStop) return;
-          }
-          center = digitalRead(IR_CENTER);
-          if (center == 0) break;
-          digitalWrite(in1, LOW);
-          digitalWrite(in2, LOW);
-          analogWrite(enA, 0);
-          digitalWrite(in3, HIGH);
-          digitalWrite(in4, LOW);
-          analogWrite(enB, PIVOT_SPEED);
+          CHECK_CMD();
+          if (digitalRead(IR_CENTER) == 0) break;
+          digitalWrite(in1, LOW);  digitalWrite(in2, LOW);  analogWrite(enA, 0);
+          digitalWrite(in3, HIGH); digitalWrite(in4, LOW);  analogWrite(enB, PIVOT_SPEED);
         }
-        stopMotors();
-        delay(100);
+        stopMotors(); delay(100);
         lastTurnDirection = 1;
-      }
-      else {
-        // No junction — overshot, reverse then pivot left
-        Serial.println("Not a junction — reversing then left pivot");
+      } else {
+        // Genuine left turn — reverse slightly then pivot left
+        Serial.println("Left turn — reverse then left pivot");
         approachingLeftTurn = false;
-
-        // Reverse briefly to get back to turn
         unsigned long revStart = millis();
         while (millis() - revStart < 200) {
-          if (Serial.available() > 0) {
-            char c = Serial.read();
-            processCommand(c);
-            if (emergencyStop) return;
-          }
-          digitalWrite(in1, HIGH);
-          digitalWrite(in2, LOW);
-          analogWrite(enA, DRIVE_SPEED);
-          digitalWrite(in3, LOW);
-          digitalWrite(in4, HIGH);
-          analogWrite(enB, DRIVE_SPEED * LEFT_SCALE);
+          CHECK_CMD();
+          digitalWrite(in1, HIGH); digitalWrite(in2, LOW);  analogWrite(enA, DRIVE_SPEED);
+          digitalWrite(in3, LOW);  digitalWrite(in4, HIGH); analogWrite(enB, (int)(DRIVE_SPEED * LEFT_SCALE));
         }
-        stopMotors();
-        delay(50);
-
-        // Pivot left until center finds tape
+        stopMotors(); delay(50);
         while (true) {
-          if (Serial.available() > 0) {
-            char c = Serial.read();
-            processCommand(c);
-            if (emergencyStop) return;
-          }
-          center = digitalRead(IR_CENTER);
-          if (center == 0) break;
-          digitalWrite(in1, LOW);
-          digitalWrite(in2, HIGH);
-          analogWrite(enA, PIVOT_SPEED);
-          digitalWrite(in3, LOW);
-          digitalWrite(in4, LOW);
-          analogWrite(enB, 0);
+          CHECK_CMD();
+          if (digitalRead(IR_CENTER) == 0) break;
+          digitalWrite(in1, LOW);  digitalWrite(in2, HIGH); analogWrite(enA, PIVOT_SPEED);
+          digitalWrite(in3, LOW);  digitalWrite(in4, LOW);  analogWrite(enB, 0);
         }
-        stopMotors();
-        delay(100);
+        stopMotors(); delay(100);
         lastTurnDirection = -1;
       }
     }
 
     else if (approachingRightTurn) {
-      Serial.println("Lost line — aggressive right pivot");
+      // Committed right turn — pivot right until center reacquires
+      Serial.println("Lost line — right pivot");
       approachingRightTurn = false;
-
       while (true) {
-        if (Serial.available() > 0) {
-          char c = Serial.read();
-          processCommand(c);
-          if (emergencyStop) return;
-        }
-        center = digitalRead(IR_CENTER);
-        if (center == 0) break;
-        digitalWrite(in1, LOW);
-        digitalWrite(in2, LOW);
-        analogWrite(enA, 0);
-        digitalWrite(in3, HIGH);
-        digitalWrite(in4, LOW);
-        analogWrite(enB, PIVOT_SPEED);
+        CHECK_CMD();
+        if (digitalRead(IR_CENTER) == 0) break;
+        digitalWrite(in1, LOW);  digitalWrite(in2, LOW);  analogWrite(enA, 0);
+        digitalWrite(in3, HIGH); digitalWrite(in4, LOW);  analogWrite(enB, PIVOT_SPEED);
       }
-      stopMotors();
-      delay(100);
+      stopMotors(); delay(100);
       lastTurnDirection = 1;
     }
 
     else {
-      Serial.println("Lost line — driving straight");
+      // No context — drive straight and hope to reacquire
+      Serial.println("Lost line — straight");
       drive(DRIVE_SPEED);
     }
   }
 }
 
 
-// ===== FILTERED RIGHT DISTANCE =====
-float getFilteredRight() {
-  const int N = 5;
-  static float readings[N] = {25, 25, 25, 25, 25};
-  static float lastGood = 25.0;
-  static int idx = 0;
-
-  float d = getStableDistance(TRIG_RIGHT, ECHO_RIGHT);
-
-  if (d <= 0 || d > 150 || abs(d - lastGood) > 25.0) {
-    return lastGood;
-  }
-
-  lastGood = d;
-  readings[idx] = d;
-  idx = (idx + 1) % N;
-
-  float sum = 0;
-  for (int i = 0; i < N; i++) sum += readings[i];
-  return sum / N;
-}
-
-// ===== RIGHT WALL FOLLOW =====
+// =============================================================================
+// rightWallFollow
+// Maintains a fixed distance from the right wall using a rolling average of
+// ultrasonic readings and differential motor correction.
+//
+//   - Rolling average over NUM_READINGS samples for noise rejection
+//   - 10% deadband around target — no correction within this band
+//   - Differential boost correction — both motors always running, one gets
+//     a small speed boost to steer; a motor is never stopped mid-straight
+//   - Front wall response: reverse then pivot left (always left for right-wall
+//     following), using a turn_state flag to alternate pivot direction as a fallback
+// =============================================================================
 void rightWallFollow() {
 
-  if (Serial.available() > 0) {
-    char cmd = Serial.read();
-    processCommand(cmd);
-    if (emergencyStop) return;
-  }
+  #define WF_MOTOR_MAX   55
+  #define WF_CORRECTION  10
+  #define WF_READINGS     5
+  #define WF_TARGET       8   // target distance from right wall in cm
+  #define WF_DEADBAND  0.1f   // 10% deadband fraction
 
-  float frontDist = getStableDistance(TRIG_FRONT, ECHO_FRONT);
-  float rightDist = getFilteredRight();
+  static int  rightBuf[WF_READINGS];
+  static int  frontBuf[WF_READINGS];
+  static bool init = false;
+  static bool turn_state = false;
 
-  Serial.print("Front: "); Serial.print(frontDist);
-  Serial.print("  Right: "); Serial.println(rightDist);
-
-  // ===== TRANSITION: wall ended → object detection =====
-  if (rightDist <= 0 || rightDist > 60.0) {
-    noWallCount++;
-    Serial.print("No wall count: "); Serial.println(noWallCount);
-  } else {
-    noWallCount = 0;
-  }
-
-  if (noWallCount >= 10) {
-    Serial.println("Wall ended — switching to object detection");
-    noWallCount        = 0;
-    objectLocked       = false;
-    currentFacingSteps = 0;
-    for (int i = 0; i < NUM_ANGLES; i++)
-      belief[i] = 1.0 / NUM_ANGLES;
-    stopMotors();
-    delay(300);
-    mode    = 'o';
-    lastLED = 'o';
-    return;
-  }
-
-  // ===== FRONT WALL + RIGHT WALL CLOSE = LEFT TURN =====
-  if (frontDist > 0 && frontDist < 20.0 && rightDist > 0 && rightDist < 30.0) {
-    Serial.println("Front wall + right wall close — turning left until clear");
-    stopMotors();
-    delay(100);
-
-    while (true) {
-      if (Serial.available() > 0) {
-        char cmd = Serial.read();
-        processCommand(cmd);
-        if (emergencyStop) return;
-      }
-
-      frontDist = getStableDistance(TRIG_FRONT, ECHO_FRONT);
-      if (frontDist <= 0 || frontDist > 20.0) break;
-
-      digitalWrite(in1, LOW);
-      digitalWrite(in2, HIGH);
-      analogWrite(enA, PIVOT_SPEED);
-      digitalWrite(in3, LOW);
-      digitalWrite(in4, HIGH);
-      analogWrite(enB, max((int)(PIVOT_SPEED * LEFT_SCALE), 65));
-      delay(50);
+  if (!init) {
+    for (int i = 0; i < WF_READINGS; i++) {
+      rightBuf[i] = WF_TARGET;
+      frontBuf[i] = 1023;
     }
+    init = true;
+  }
 
+  CHECK_CMD();
+
+  // Push a new reading into the front of the buffer and return the average.
+  // Older readings shift back by one position each call.
+  auto rollingAvg = [](float newVal, int* buf) -> float {
+    float avg = newVal;
+    for (int i = 0; i < WF_READINGS - 1; i++) {
+      avg       += buf[i];
+      buf[i + 1] = buf[i];
+    }
+    buf[0] = (int)newVal;
+    return avg / WF_READINGS;
+  };
+
+  float frontDist = getDistance(TRIG_FRONT, ECHO_FRONT);
+  if (frontDist == -1) frontDist = 1023; // or some large value to ignore
+
+  float rightDist = getDistance(TRIG_RIGHT, ECHO_RIGHT);
+  if (rightDist == -1) rightDist = 1023;
+
+  // Front wall response: reverse, then pivot left to turn away from the wall
+  float frontAvg = rollingAvg(frontDist, frontBuf);
+  if (frontAvg < WF_TARGET) {
+    Serial.println("Front wall — reverse + left pivot");
+    stopMotors(); delay(50);
+
+    unsigned long rev = millis();
+    while (millis() - rev < 500) {
+      CHECK_CMD();
+      digitalWrite(in1, HIGH); digitalWrite(in2, LOW);  analogWrite(enA, WF_MOTOR_MAX);
+      digitalWrite(in3, LOW);  digitalWrite(in4, HIGH); analogWrite(enB, WF_MOTOR_MAX);
+    }
     stopMotors();
-    delay(200);
+
+    unsigned long piv = millis();
+    while (millis() - piv < 500) {
+      CHECK_CMD();
+      // Always pivot left — right wall follow always turns left at a front wall
+      digitalWrite(in1, LOW);  digitalWrite(in2, HIGH); analogWrite(enA, 0);
+      digitalWrite(in3, HIGH); digitalWrite(in4, LOW);  analogWrite(enB, WF_MOTOR_MAX);
+    }
+    turn_state = !turn_state;
+
+    drive(WF_MOTOR_MAX);
     return;
   }
 
-  // ===== RIGHT WALL LOST — dual motor turn right hard =====
-  if (rightDist <= 0 || rightDist > 60.0) {
-    Serial.println("Right wall lost — turning right hard");
-    digitalWrite(in1, HIGH);
-    digitalWrite(in2, LOW);
-    analogWrite(enA, PIVOT_SPEED);
-    digitalWrite(in3, HIGH);
-    digitalWrite(in4, LOW);
-    analogWrite(enB, max((int)(PIVOT_SPEED * LEFT_SCALE), 65));
-    return;
+  CHECK_CMD();
+
+  // Right wall tracking — differential correction within a 10% deadband
+  float rightAvg = rollingAvg(rightDist, rightBuf);
+
+  Serial.print("R:"); Serial.print(rightAvg);
+  Serial.print(" T:"); Serial.println(WF_TARGET);
+
+  float lower = WF_TARGET * (1.0f - WF_DEADBAND);
+  float upper = WF_TARGET * (1.0f + WF_DEADBAND);
+
+  if (rightAvg >= lower && rightAvg <= upper) {
+    // On target — drive straight
+    drive(WF_MOTOR_MAX);
+
+  } else if (rightAvg > upper) {
+    // Too far from wall — boost left motor to steer right toward wall
+    Serial.println("Too far — steer right");
+    digitalWrite(in1, LOW);  digitalWrite(in2, HIGH); analogWrite(enA, WF_MOTOR_MAX + WF_CORRECTION);
+    digitalWrite(in3, HIGH); digitalWrite(in4, LOW);  analogWrite(enB, WF_MOTOR_MAX);
+
+  } else {
+    // Too close to wall — boost right motor to steer left away from wall
+    Serial.println("Too close — steer left");
+    digitalWrite(in1, LOW);  digitalWrite(in2, HIGH); analogWrite(enA, WF_MOTOR_MAX);
+    digitalWrite(in3, HIGH); digitalWrite(in4, LOW);  analogWrite(enB, WF_MOTOR_MAX + WF_CORRECTION);
   }
 
-  // ===== BAND: 40-60cm — single left motor, hard right correction =====
-  if (rightDist > 40.0) {
-    Serial.println("Band: 40-60cm — hard right correction");
-    digitalWrite(in1, LOW);
-    digitalWrite(in2, LOW);
-    analogWrite(enA, 0);
-    digitalWrite(in3, HIGH);
-    digitalWrite(in4, LOW);
-    analogWrite(enB, max((int)(65 * LEFT_SCALE), 65));
-    return;
-  }
-
-  // ===== BAND: 30-40cm — moderate right correction =====
-  if (rightDist > 30.0) {
-    Serial.println("Band: 30-40cm — moderate right correction");
-    digitalWrite(in1, LOW);
-    digitalWrite(in2, HIGH);
-    analogWrite(enA, 65);
-    digitalWrite(in3, HIGH);
-    digitalWrite(in4, LOW);
-    analogWrite(enB, max((int)(85 * LEFT_SCALE), 65));
-    return;
-  }
-
-  // ===== BAND: 20-30cm — sweet spot, drive straight =====
-  if (rightDist >= 20.0) {
-    Serial.println("Band: 20-30cm — straight");
-    digitalWrite(in1, LOW);
-    digitalWrite(in2, HIGH);
-    analogWrite(enA, 65);
-    digitalWrite(in3, HIGH);
-    digitalWrite(in4, LOW);
-    analogWrite(enB, max((int)(65 * LEFT_SCALE), 65));
-    return;
-  }
-
-  // ===== BAND: 10-20cm — nudge left =====
-  if (rightDist >= 10.0) {
-    Serial.println("Band: 10-20cm — nudge left");
-    digitalWrite(in1, LOW);
-    digitalWrite(in2, HIGH);
-    analogWrite(enA, 85);
-    digitalWrite(in3, HIGH);
-    digitalWrite(in4, LOW);
-    analogWrite(enB, max((int)(65 * LEFT_SCALE), 65));
-    return;
-  }
-
-  // ===== BAND: <10cm — dual motor pivot left hard =====
-  Serial.println("Band: <10cm — pivot left hard");
-  digitalWrite(in1, LOW);
-  digitalWrite(in2, HIGH);
-  analogWrite(enA, PIVOT_SPEED);
-  digitalWrite(in3, LOW);
-  digitalWrite(in4, HIGH);
-  analogWrite(enB, max((int)(PIVOT_SPEED * LEFT_SCALE), 65));
+  #undef WF_MOTOR_MAX
+  #undef WF_CORRECTION
+  #undef WF_READINGS
+  #undef WF_TARGET
+  #undef WF_DEADBAND
 }
 
 
-// ===== OBJECT DETECTION =====
+// =============================================================================
+// runObjectDetection
+// Scans 180 degrees, applies a Bayesian belief update to identify the most
+// likely object location, rotates to face it, then drives toward it.
+//
+// Flow:
+//   1. If already locked, drive toward object (driveForwardStep handles arrival)
+//   2. Reset heading to forward if offset from a previous sweep
+//   3. Sweep, update belief, find best index
+//   4. Rotate to face best index and lock
+// =============================================================================
 void runObjectDetection() {
-
-  if (Serial.available() > 0) {
-    char cmd = Serial.read();
-    processCommand(cmd);
-    if (emergencyStop) return;
-  }
+  CHECK_CMD();
 
   float d = getDistance(TRIG_FRONT, ECHO_FRONT);
-
   if (d > 2 && d < 15) {
     stopMotors();
     Serial.println("OBJECT REACHED");
@@ -472,35 +340,31 @@ void runObjectDetection() {
     return;
   }
 
+  // Return to forward-facing heading before sweeping
   if (currentFacingSteps > 0) {
-    Serial.println("Resetting to forward before sweep...");
+    Serial.println("Resetting heading before sweep");
     rotateLeftSteps(currentFacingSteps);
     delay(300);
     currentFacingSteps = 0;
   }
 
   for (int i = 0; i < NUM_ANGLES; i++)
-    belief[i] = 1.0 / NUM_ANGLES;
+    belief[i] = 1.0f / NUM_ANGLES;
 
   sweep180();
   updateBelief();
 
   int best = getBestBeliefIndex();
-
-  Serial.print("Best belief index: ");
-  Serial.println(best);
+  Serial.print("Best index: "); Serial.println(best);
 
   if (best < 0) {
-    Serial.println("No valid object found, rescanning...");
+    Serial.println("No object found — rescanning");
     delay(500);
     return;
   }
 
   int stepsToFace = (NUM_ANGLES - 1) - best;
-
-  Serial.print("Steps to face: ");
-  Serial.println(stepsToFace);
-
+  Serial.print("Steps to face: "); Serial.println(stepsToFace);
   rotateLeftSteps(stepsToFace);
   delay(300);
 
@@ -509,104 +373,96 @@ void runObjectDetection() {
 }
 
 
-// ===== SWEEP =====
+// =============================================================================
+// sweep180
+// Rotates the robot rightward one step at a time, recording a front distance
+// measurement at each of the NUM_ANGLES angular positions.
+// Results are stored in the global distances[] array.
+// =============================================================================
 void sweep180() {
-
-  Serial.println("---- DEPTH MAP ----");
-
+  Serial.println("--- SWEEP ---");
   for (int i = 0; i < NUM_ANGLES; i++) {
-
-    float d = getDistance(TRIG_FRONT, ECHO_FRONT);
-    distances[i] = d;
-
-    Serial.print("Index "); Serial.print(i);
-    Serial.print(" Angle "); Serial.print(i * 15);
-    Serial.print("  Distance: "); Serial.println(d);
-
-    if (i < NUM_ANGLES - 1) {
-      rotateRightSteps(1);
-      delay(300);
-    }
+    distances[i] = getDistance(TRIG_FRONT, ECHO_FRONT);
+    Serial.print("i="); Serial.print(i);
+    Serial.print(" deg="); Serial.print(i * 15);
+    Serial.print(" dist="); Serial.println(distances[i]);
+    if (i < NUM_ANGLES - 1) { rotateRightSteps(1); delay(300); }
   }
-
-  Serial.println("-------------------");
+  Serial.println("--- END ---");
 }
 
 
-// ===== BAYES BELIEF UPDATE =====
+// =============================================================================
+// updateBelief
+// Bayesian update over the distances[] array. Angles where distances drop
+// sharply relative to their neighbours are more likely to be objects — the
+// likelihood term rewards local minima. The belief array is normalised after
+// the update so it remains a valid probability distribution.
+// =============================================================================
 void updateBelief() {
+  // Zero out invalid readings
+  for (int i = 0; i < NUM_ANGLES; i++)
+    if (distances[i] <= 0) belief[i] = 0;
 
-  for (int i = 0; i < NUM_ANGLES; i++) {
-    if (distances[i] <= 0)
-      belief[i] = 0;
-  }
-
+  // Reward local minima — indices where both neighbours are farther away
   for (int i = 1; i < NUM_ANGLES - 1; i++) {
-
-    float left  = distances[i - 1];
-    float mid   = distances[i];
-    float right = distances[i + 1];
-
-    if (mid <= 0 || left <= 0 || right <= 0) continue;
-
-    float dropLeft   = left - mid;
-    float dropRight  = right - mid;
-    float likelihood = max(0.0f, dropLeft + dropRight);
-
-    belief[i] = belief[i] * (1.0f + likelihood / 100.0f);
+    float l = distances[i - 1], m = distances[i], r = distances[i + 1];
+    if (m <= 0 || l <= 0 || r <= 0) continue;
+    float likelihood = max(0.0f, (l - m) + (r - m));
+    belief[i] *= (1.0f + likelihood / 100.0f);
   }
 
-  if (distances[0] > 0 && distances[1] > 0) {
-    float drop = distances[1] - distances[0];
-    belief[0] = belief[0] * (1.0f + max(0.0f, drop) / 100.0f);
-  }
+  // Edge cases for first and last angles
+  if (distances[0] > 0 && distances[1] > 0)
+    belief[0] *= (1.0f + max(0.0f, distances[1] - distances[0]) / 100.0f);
 
-  if (distances[NUM_ANGLES-1] > 0 && distances[NUM_ANGLES-2] > 0) {
-    float drop = distances[NUM_ANGLES-2] - distances[NUM_ANGLES-1];
-    belief[NUM_ANGLES-1] = belief[NUM_ANGLES-1] * (1.0f + max(0.0f, drop) / 100.0f);
-  }
+  if (distances[NUM_ANGLES - 1] > 0 && distances[NUM_ANGLES - 2] > 0)
+    belief[NUM_ANGLES - 1] *= (1.0f + max(0.0f, distances[NUM_ANGLES - 2] - distances[NUM_ANGLES - 1]) / 100.0f);
 
+  // Normalise
   float sum = 0;
   for (int i = 0; i < NUM_ANGLES; i++) sum += belief[i];
-  for (int i = 0; i < NUM_ANGLES; i++) belief[i] /= sum;
+  if (sum > 0)
+    for (int i = 0; i < NUM_ANGLES; i++) belief[i] /= sum;
 }
 
 
-// ===== BEST BELIEF INDEX =====
+// =============================================================================
+// getBestBeliefIndex
+// Finds the sweep index with the highest combined score of belief value and
+// angular width of its object cluster. Width is measured by how many adjacent
+// readings fall within 30 cm of the reference distance — wider clusters at
+// high belief indicate a more confident object detection.
+//
+// Returns the best index, or -1 if no valid reading exists.
+// =============================================================================
 int getBestBeliefIndex() {
-
   float bestScore = -1;
   int   bestIndex = -1;
 
   for (int i = 0; i < NUM_ANGLES; i++) {
-
     if (distances[i] <= 0) continue;
 
     float refDist = distances[i];
     int   width   = 1;
 
     for (int j = i - 1; j >= 0; j--) {
-      if (distances[j] > 0 && abs(distances[j] - refDist) < 30.0) width++;
-      else break;
+      if (distances[j] > 0 && abs(distances[j] - refDist) < 30.0f) width++; else break;
     }
-
     for (int j = i + 1; j < NUM_ANGLES; j++) {
-      if (distances[j] > 0 && abs(distances[j] - refDist) < 30.0) width++;
-      else break;
+      if (distances[j] > 0 && abs(distances[j] - refDist) < 30.0f) width++; else break;
     }
 
     float score = belief[i] * width;
+    Serial.print("i="); Serial.print(i);
+    Serial.print(" belief="); Serial.print(belief[i]);
+    Serial.print(" width="); Serial.print(width);
+    Serial.print(" score="); Serial.println(score);
 
-    Serial.print("Index "); Serial.print(i);
-    Serial.print(" belief "); Serial.print(belief[i]);
-    Serial.print(" width "); Serial.print(width);
-    Serial.print(" score "); Serial.println(score);
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestIndex = i;
-    }
+    if (score > bestScore) { bestScore = score; bestIndex = i; }
   }
 
   return bestIndex;
 }
+
+#undef CHECK_CMD
